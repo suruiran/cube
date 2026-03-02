@@ -8,7 +8,7 @@ import (
 	json "github.com/goccy/go-json"
 )
 
-func MustJsonMarshal(v any) []byte {
+func MustMarshalJSON(v any) []byte {
 	buf := bytes.NewBuffer(nil)
 	enc := json.NewEncoder(buf)
 	enc.SetEscapeHTML(false)
@@ -114,10 +114,30 @@ func Peek[T IJsonValue](mapv map[string]any, keys ...string) (T, bool) {
 	return dv, false
 }
 
-func UnmarshalJSONFromString[T any](dest *T, txt string) error {
+func UnmarshalJSONString(txt string, dest any) error {
 	err := json.Unmarshal([]byte(txt), dest)
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+func UnmarshalJSON(bytes []byte, dest any) error {
+	err := json.Unmarshal(bytes, dest)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func MarshalJSON(val any) ([]byte, error) {
+	return json.Marshal(val)
+}
+
+func MarshalJSONString(val any) (string, error) {
+	bs, err := json.Marshal(val)
+	if err != nil {
+		return "", err
+	}
+	return string(bs), nil
 }

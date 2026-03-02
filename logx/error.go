@@ -10,7 +10,7 @@ func Error(e error) slog.Attr {
 	return slog.String("error", e.Error())
 }
 
-func Panic(v any) slog.Attr {
+func Recovered(v any) slog.Attr {
 	if ev, ok := v.(error); ok {
 		return slog.String("panic", ev.Error())
 	}
@@ -26,7 +26,7 @@ func ErrorWithStacktrace(e error, opts *StacktraceOptions) slog.Attr {
 	if opts == nil {
 		opts = &StacktraceOptions{
 			Skip: 2,
-			Size: 10,
+			Size: 20,
 		}
 	}
 	return slog.Group(
@@ -36,11 +36,11 @@ func ErrorWithStacktrace(e error, opts *StacktraceOptions) slog.Attr {
 	)
 }
 
-func PanicWithStacktrace(pv any, opts *StacktraceOptions) slog.Attr {
+func RecoveredWithStacktrace(pv any, opts *StacktraceOptions) slog.Attr {
 	if opts == nil {
 		opts = &StacktraceOptions{
 			Skip: 2,
-			Size: 10,
+			Size: 20,
 		}
 	}
 	var item slog.Attr

@@ -9,8 +9,8 @@ import (
 )
 
 type Opts struct {
-	Filename string `json:"filename" toml:"filename"`
-	LockFile bool   `json:"lock_file" toml:"lock_file"`
+	Filename         string `json:"filename" toml:"filename"`
+	MultiProcessSafe bool   `json:"multi_process_safe" toml:"multi_process_safe"`
 
 	Level       slog.Level `json:"level" toml:"level"`
 	AddSource   bool       `json:"add_source" toml:"add_source"`
@@ -28,10 +28,10 @@ type Opts struct {
 func New(opts *Opts) (*slog.Logger, error) {
 	nobuff := opts.BufferSize < 0
 	if opts.Rolling != nil && nobuff {
-		return nil, errors.New("rrscpks.logger: no_buffered is not supported with rolling")
+		return nil, errors.New("cube.logx: no_buffered is not supported with rolling")
 	}
 	if opts.DisableLocal && len(opts.Forwards) == 0 {
-		return nil, errors.New("rrscpks.logger: disable_local is true but no forwards")
+		return nil, errors.New("cube.logx: disable_local is true but empty forwards")
 	}
 
 	handlers := []slog.Handler{}
@@ -41,7 +41,7 @@ func New(opts *Opts) (*slog.Logger, error) {
 			if opts.Rolling.BufferSize <= 0 {
 				opts.Rolling.BufferSize = opts.BufferSize
 			}
-			if opts.LockFile {
+			if opts.MultiProcessSafe {
 				opts.Rolling.OpenFile = func(s string, i int, fm os.FileMode) (IFile, error) {
 					return OpenLockFile(s, i, fm)
 				}
@@ -62,7 +62,7 @@ func New(opts *Opts) (*slog.Logger, error) {
 			}
 
 			var fobj io.Writer
-			if opts.LockFile {
+			if opts.MultiProcessSafe {
 				var err error
 				fobj, err = OpenLockFile(opts.Filename, fcf, 0644)
 				if err != nil {
@@ -83,7 +83,6 @@ func New(opts *Opts) (*slog.Logger, error) {
 		}
 
 		handlers = append(handlers, slog.NewJSONHandler(lw, &slog.HandlerOptions{Level: opts.Level, AddSource: opts.AddSource}))
-
 	}
 
 	handlers = append(handlers, opts.Forwards...)
@@ -93,7 +92,7 @@ func New(opts *Opts) (*slog.Logger, error) {
 
 	var handler slog.Handler
 	if len(handlers) > 1 {
-		handler = NewMultSender(handlers...)
+		handler = slog.NewMultiHandler(handlers...)
 	} else {
 		handler = handlers[0]
 	}
