@@ -32,3 +32,6 @@ func fieldoffset(rv reflect.Type, indexes []int) uintptr {
 	fvvptr := fvv.Addr().UnsafePointer()
 	return uintptr(fvvptr) - uintptr(auptr)
 }
+
+// TODO AnchorFor[T]() -> *T
+// TODO FieldFor[T](&(*T.FieldA)) -> *Field
