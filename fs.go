@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
 )
@@ -60,6 +61,9 @@ type WalkOptions struct {
 }
 
 func (opts *WalkOptions) match(pattern, filename, filefullpath string) bool {
+	filename = strings.ReplaceAll(filename, "\\", "/")
+	filefullpath = strings.ReplaceAll(filefullpath, "\\", "/")
+
 	matched, err := doublestar.Match(pattern, filename)
 	if err == nil && matched {
 		return true
@@ -91,7 +95,7 @@ var (
 	errEmptyMatchPatterns = errors.New("cube.fs.WalkStream: empty match patterns")
 )
 
-func WalkStream(root string, opts *WalkOptions) (iter.Seq2[*FileInfoWithDir, error], error) {
+func FsWalkStream(root string, opts *WalkOptions) (iter.Seq2[*FileInfoWithDir, error], error) {
 	if len(opts.MatchPatterns) < 1 {
 		return nil, errEmptyMatchPatterns
 	}
@@ -114,7 +118,7 @@ func WalkStream(root string, opts *WalkOptions) (iter.Seq2[*FileInfoWithDir, err
 }
 
 func doWalkStream(dir string, markers Set[string], currentDepth int, yield func(*FileInfoWithDir, error) bool, opts *WalkOptions) {
-	if currentDepth > opts.MaxDepth {
+	if opts.MaxDepth > 0 && currentDepth > opts.MaxDepth {
 		return
 	}
 	if _, visited := markers[dir]; visited {
