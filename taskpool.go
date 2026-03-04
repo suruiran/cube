@@ -76,34 +76,36 @@ func (pool *TaskPool) exec(task ITaskItem) {
 }
 
 var (
-	ErrTaskPoolQueueFull = errors.New("rrscpkgs.taskpool: queue full")
-	ErrTaskPoolClosed    = errors.New("rrscpkgs.taskpool: closed")
+	ErrTaskPoolQueueFull = errors.New("cube.taskpool: queue full")
+	ErrTaskPoolClosed    = errors.New("cube.taskpool: closed")
 )
 
 func (pool *TaskPool) Add(task ITaskItem) (err error) {
 	if pool.closed.Load() {
 		return ErrTaskPoolClosed
 	}
-	pool.wg.Add(1)
+
 	defer func() {
 		if r := recover(); r != nil {
-			pool.wg.Done()
-			err = ErrTaskPoolClosed
+			if pool.closed.Load() {
+				err = ErrTaskPoolClosed
+			} else {
+				panic(r)
+			}
 		}
 	}()
 
 	select {
 	case pool.tasks <- task:
 		{
+			pool.wg.Add(1)
 		}
 	case <-pool.opts.Context.Done():
 		{
-			pool.wg.Done()
 			return pool.opts.Context.Err()
 		}
 	default:
 		{
-			pool.wg.Done()
 			return ErrTaskPoolQueueFull
 		}
 	}
@@ -114,10 +116,6 @@ func (pool *TaskPool) AddFunc(f func(ctx context.Context)) error {
 	return pool.Add(TaskFuncType(f))
 }
 
-func (pool *TaskPool) Wait() {
-	pool.wg.Wait()
-}
-
 func (pool *TaskPool) Close(wait bool) {
 	if !pool.closed.CompareAndSwap(false, true) {
 		return
@@ -126,6 +124,6 @@ func (pool *TaskPool) Close(wait bool) {
 	pool.cancel()
 	close(pool.tasks)
 	if wait {
-		pool.Wait()
+		pool.wg.Wait()
 	}
 }

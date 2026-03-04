@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	ErrJsonStreamBadElement = errors.New("json stream: bad element, required '{'")
+	ErrJsonStreamBadElement = errors.New("cube.json.stream: bad element, required '{'")
 )
 
 type _CloseScope struct {
@@ -40,7 +40,21 @@ func JsonStreamZeroCopy(fp string) (iter.Seq2[json.RawMessage, error], error) {
 	var cs = _CloseScope{file: fobj.Close}
 
 	var reader io.Reader = bufio.NewReaderSize(fobj, 1024*1024*4)
+
+	fp = strings.ToLower(fp)
 	isgzip := strings.HasSuffix(fp, ".gz")
+	isjsonl := false
+	if isgzip {
+		isjsonl = strings.HasSuffix(fp, ".jsonl.gz")
+	} else {
+		isjsonl = strings.HasSuffix(fp, ".jsonl")
+	}
+	if isjsonl {
+		cs.file = nil
+		cs.Close()
+		return jsonlStreamZeroCopy(fobj, isgzip, false)
+	}
+
 	if isgzip {
 		gr, gr_init_err := gzip.NewReader(reader)
 		if gr_init_err != nil {
@@ -58,7 +72,7 @@ func JsonStreamZeroCopy(fp string) (iter.Seq2[json.RawMessage, error], error) {
 	if token != json.Delim('[') {
 		cs.file = nil
 		cs.Close()
-		return jsonlStreamZeroCopy(fobj, isgzip)
+		return jsonlStreamZeroCopy(fobj, isgzip, true)
 	}
 
 	var v json.RawMessage
@@ -88,15 +102,17 @@ const (
 	jsonl_default_line_size = 1024 * 1024
 )
 
-func jsonlStreamZeroCopy(fobj *os.File, isgzip bool) (iter.Seq2[json.RawMessage, error], error) {
+func jsonlStreamZeroCopy(fobj *os.File, isgzip bool, seek0 bool) (iter.Seq2[json.RawMessage, error], error) {
 	cs := _CloseScope{
 		file: fobj.Close,
 	}
 
-	_, seek_err := fobj.Seek(0, io.SeekStart)
-	if seek_err != nil {
-		cs.Close()
-		return nil, seek_err
+	if seek0 {
+		_, seek_err := fobj.Seek(0, io.SeekStart)
+		if seek_err != nil {
+			cs.Close()
+			return nil, seek_err
+		}
 	}
 
 	var reader io.Reader = bufio.NewReaderSize(fobj, 1024*1024*4)

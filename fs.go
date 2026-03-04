@@ -18,7 +18,7 @@ func ReadDirStream(dir string) (iter.Seq2[os.FileInfo, error], error) {
 		return nil, err
 	}
 	if !d.IsDir() {
-		return nil, fmt.Errorf("rrscpkgs.ReadDirStream: %s is not a directory", dir)
+		return nil, fmt.Errorf("cube.fs.ReadDirStream: %s is not a directory", dir)
 	}
 
 	return func(yield func(os.FileInfo, error) bool) {
@@ -87,17 +87,18 @@ func (fi *FileInfoWithDir) String() string {
 	return fmt.Sprintf("FileInfo(%s)", fi.Fullpath())
 }
 
+var (
+	errEmptyMatchPatterns = errors.New("cube.fs.WalkStream: empty match patterns")
+)
+
 func WalkStream(root string, opts *WalkOptions) (iter.Seq2[*FileInfoWithDir, error], error) {
-	if opts.MaxDepth < 1 {
-		return nil, errors.New("rrscpkgs.WalkStream: the depth must be clearly specified")
-	}
 	if len(opts.MatchPatterns) < 1 {
-		return nil, errors.New("rrscpkgs.WalkStream: empty match patterns")
+		return nil, errEmptyMatchPatterns
 	}
 	if opts.OnSlightError == nil {
 		opts.OnSlightError = func(err error) {
 			slog.Warn(
-				"rrscpkgs.WalkStream: slight error",
+				"cube.fs.WalkStream: slight error",
 				slog.String("root", root), slog.String("error", err.Error()),
 			)
 		}

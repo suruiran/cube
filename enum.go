@@ -26,7 +26,7 @@ var (
 	enumStringRegex = regexp.MustCompile("^[a-zA-Z_][a-zA-Z0-9_]*$")
 )
 
-func AllNamedEnums[T IEnum](min T, max T) []T {
+func AllIntEnums[T IEnum](min T, max T) []T {
 	items := make([]T, 0, max-min+1)
 	for i := min; i <= max; i++ {
 		if enumStringRegex.MatchString(i.String()) {
@@ -34,10 +34,4 @@ func AllNamedEnums[T IEnum](min T, max T) []T {
 		}
 	}
 	return items
-}
-
-func FillEnum[T IEnum](sp *[]T, min T, max T) {
-	for v := min + 1; v < max; v++ {
-		*sp = append(*sp, v)
-	}
 }

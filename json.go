@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"reflect"
 	"strconv"
+	"unsafe"
 
 	json "github.com/goccy/go-json"
 )
@@ -19,7 +20,7 @@ func MustMarshalJSON(v any) []byte {
 	return bytes.TrimSpace(buf.Bytes())
 }
 
-func MustJsonMarshalString(v any) string {
+func MustMarshalJSONString(v any) string {
 	bs, err := json.Marshal(v)
 	if err != nil {
 		panic(err)
@@ -27,7 +28,7 @@ func MustJsonMarshalString(v any) string {
 	return string(bs)
 }
 
-func MustJsonMarshalIndent(v any) []byte {
+func MustMarshalJSONIndent(v any) []byte {
 	bs, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		panic(err)
@@ -35,8 +36,8 @@ func MustJsonMarshalIndent(v any) []byte {
 	return bs
 }
 
-func MustJsonMarshalIndentString(v any) string {
-	return string(MustJsonMarshalIndent(v))
+func MustMarshalJSONIndentString(v any) string {
+	return string(MustMarshalJSONIndent(v))
 }
 
 type IJsonValue interface {
@@ -115,7 +116,7 @@ func Peek[T IJsonValue](mapv map[string]any, keys ...string) (T, bool) {
 }
 
 func UnmarshalJSONString(txt string, dest any) error {
-	err := json.Unmarshal([]byte(txt), dest)
+	err := json.Unmarshal(unsafe.Slice(unsafe.StringData(txt), len(txt)), dest)
 	if err != nil {
 		return err
 	}

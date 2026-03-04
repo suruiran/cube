@@ -15,18 +15,26 @@ func FuncName(act any) string {
 
 func ReadStack(skip int, size int) string {
 	pc := make([]uintptr, size)
-	rs := runtime.Callers(skip+2, pc)
+	n := runtime.Callers(skip+2, pc)
+	if n == 0 {
+		return "empty stack"
+	}
 	var sb strings.Builder
-	for i := range rs {
-		fc := runtime.FuncForPC(pc[i])
-		file, line := fc.FileLine(pc[i])
-		sb.WriteString(file)
+	frames := runtime.CallersFrames(pc[:n])
+	for {
+		frame, more := frames.Next()
+
+		sb.WriteString(frame.File)
 		sb.WriteByte(':')
-		sb.WriteString(strconv.FormatInt(int64(line), 10))
+		sb.WriteString(strconv.FormatInt(int64(frame.Line), 10))
 
 		sb.WriteString(" (")
-		sb.WriteString(FuncName(fc))
+		sb.WriteString(frame.Function)
 		sb.WriteString(")\r\n")
+
+		if !more {
+			break
+		}
 	}
 	return sb.String()
 }

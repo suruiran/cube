@@ -2,18 +2,29 @@ package cube
 
 import "log/slog"
 
-func Fly(fnc func()) {
+func fly_internal(fnc func(), rethrow bool) {
 	go func() {
 		defer func() {
 			if rv := recover(); rv != nil {
 				slog.Error(
-					"rrscpkgs.fly: panic",
+					"cube.fly: panic",
 					slog.String("func", FuncName(fnc)),
 					slog.Any("panic", rv),
-					slog.String("stacktrace", ReadStack(1, 15)),
+					slog.String("stacktrace", ReadStack(2, 20)),
 				)
+				if rethrow {
+					panic(rv)
+				}
 			}
 		}()
 		fnc()
 	}()
+}
+
+func Fly(fnc func()) {
+	fly_internal(fnc, false)
+}
+
+func FlyRethrow(fnc func()) {
+	fly_internal(fnc, true)
 }
