@@ -17,7 +17,7 @@ type CliReader struct {
 }
 
 func NewCliReader() *CliReader {
-	return &CliReader{buf: bufio.NewReaderSize(os.Stdin, 1)}
+	return &CliReader{buf: bufio.NewReader(os.Stdin)}
 }
 
 func (cr *CliReader) readline() string {
@@ -55,12 +55,12 @@ type ReadStringOpts struct {
 }
 
 var (
-	gumavail bool
+	gum_avail bool
 )
 
 func init() {
 	_, err := exec.LookPath("gum")
-	gumavail = err == nil
+	gum_avail = err == nil
 }
 
 func gumfilter(items []string) string {
@@ -82,7 +82,7 @@ func gumfilter(items []string) string {
 
 func (cr *CliReader) StringWithOpts(name string, opts *ReadStringOpts) string {
 	if opts != nil && len(opts.Enums) > 0 {
-		if gumavail {
+		if gum_avail {
 			return gumfilter(opts.Enums)
 		}
 		slices.Sort(opts.Enums)
@@ -113,9 +113,11 @@ func (cr *CliReader) StringWithOpts(name string, opts *ReadStringOpts) string {
 		panic(fmt.Errorf("len < min(%d)", len(txt)))
 	}
 
-	idx := slices.Index(opts.Enums, txt)
-	if idx < 0 {
-		panic(fmt.Errorf("%s not in enums", txt))
+	if len(opts.Enums) > 0 {
+		idx := slices.Index(opts.Enums, txt)
+		if idx < 0 {
+			panic(fmt.Errorf("%s not in enums", txt))
+		}
 	}
 
 	if opts.Regexp != nil && !opts.Regexp.MatchString(txt) {

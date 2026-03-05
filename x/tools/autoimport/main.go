@@ -20,22 +20,33 @@ var (
 		"**/.DS_Store",
 		"**/__pycache__/*",
 		"**/internal/*",
+		"**/vendor/*",
+		"**/.idea/*",
+		"**/.vscode/*",
+		"**/*_test.go",
 	}
 )
 
 func main() {
 	var (
 		scanrootflag = flag.String("root", "", "root directory")
-		ignores      ccli.Strings
+		ignores      ccli.Items[string]
 		outflag      = flag.String("o", "", "output file")
 		ismainflag   = flag.Bool("m", true, "is main package, default is true")
 	)
 	flag.Var(&ignores, "i", "ignore patterns")
 	flag.Parse()
 
-	ignores = append(ignores, defaultignores...)
+	ignores.Items = append(ignores.Items, defaultignores...)
 
-	if *scanrootflag == "" || *outflag == "" {
+	if *scanrootflag == "" {
+		fmt.Println("empty scan root directory, -root")
+		flag.Usage()
+		return
+	}
+
+	if *outflag == "" {
+		fmt.Println("empty output file, -o")
 		flag.Usage()
 		return
 	}
@@ -46,6 +57,7 @@ func main() {
 	}
 	modname := ""
 	for line := range strings.SplitSeq(string(gomodc), "\n") {
+		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "module") {
 			parts := strings.Fields(line)
 			if len(parts) >= 2 {
@@ -54,10 +66,13 @@ func main() {
 			break
 		}
 	}
+	if len(modname) >= 2 && modname[0] == '"' && modname[len(modname)-1] == '"' {
+		modname = modname[1 : len(modname)-1]
+	}
 
 	seq, err := cube.FsWalkStream(*scanrootflag, &cube.WalkOptions{
 		MatchPatterns:  []string{"*.go"},
-		IgnorePatterns: []string(ignores),
+		IgnorePatterns: ignores.Items,
 		MaxDepth:       10,
 	})
 
@@ -70,9 +85,6 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		if filepath.Base(item.Dir) == "internal" {
-			continue
-		}
 		dirs.Add(item.Dir)
 	}
 
@@ -82,11 +94,7 @@ func main() {
 	if *ismainflag {
 		head = "package main\n"
 	} else {
-		lidx := strings.LastIndex(modname, "/")
-		if lidx == -1 {
-			lidx = 0
-		}
-		head = fmt.Sprintf("package %s\n", modname[lidx+1:])
+		head = fmt.Sprintf("package %s\n", filepath.Base(modname))
 	}
 
 	pkgroot, _ := filepath.Abs(".")

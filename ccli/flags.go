@@ -2,39 +2,27 @@ package ccli
 
 import (
 	"flag"
+	"fmt"
 	"strings"
+
+	"github.com/suruiran/cube"
 )
 
-type Strings []string
-
-func (s *Strings) Set(val string) error {
-	*s = append(*s, val)
-	return nil
-}
-
-func (s *Strings) String() string {
-	return strings.Join(*s, ",")
-}
-
-var (
-	_ flag.Value = (*Strings)(nil)
-)
-
-type ItemList[T any] struct {
+type Items[T any] struct {
 	Items  []T
-	decode func(string) (T, error)
-	encode func(*T) string
+	Decode func(string) (T, error)
+	Encode func(*T) (string, error)
 }
 
-func NewFlagItems[T any](decode func(string) (T, error), encode func(*T) string) *ItemList[T] {
-	return &ItemList[T]{
-		decode: decode,
-		encode: encode,
+func (i *Items[T]) Set(val string) error {
+	if i.Decode == nil {
+		i.Decode = func(s string) (T, error) {
+			var v T
+			return v, cube.UnmarshalText(s, &v)
+		}
 	}
-}
 
-func (i *ItemList[T]) Set(val string) error {
-	item, err := i.decode(val)
+	item, err := i.Decode(val)
 	if err != nil {
 		return err
 	}
@@ -42,12 +30,20 @@ func (i *ItemList[T]) Set(val string) error {
 	return nil
 }
 
-func (i *ItemList[T]) String() string {
+func (i *Items[T]) String() string {
+	if i.Encode == nil {
+		i.Encode = func(t *T) (string, error) { return cube.MarshalText(t) }
+	}
+
 	items := make([]string, 0, len(i.Items))
 	for _, item := range i.Items {
-		items = append(items, i.encode(&item))
+		is, err := i.Encode(&item)
+		if err != nil {
+			is = fmt.Sprintf("MarshalFailed{%v, %s}", item, err.Error())
+		}
+		items = append(items, is)
 	}
-	return strings.Join(items, ",")
+	return strings.Join(items, ", ")
 }
 
-var _ flag.Value = (*ItemList[int])(nil)
+var _ flag.Value = (*Items[int])(nil)
