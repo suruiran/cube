@@ -60,6 +60,25 @@ type WalkOptions struct {
 	OnSlightError  func(error)
 }
 
+var (
+	CommonIgnorePatterns = []string{
+		// vsc
+		"**/.git",
+
+		// language
+		"**/node_modules",
+		"**/__pycache__",
+		"**/target",
+
+		// ide
+		"**/.vscode",
+		"**/.idea",
+
+		// fs
+		"**/.DS_Store",
+	}
+)
+
 func (opts *WalkOptions) match(pattern, filename, filefullpath string) bool {
 	filename = strings.ReplaceAll(filename, "\\", "/")
 	filefullpath = strings.ReplaceAll(filefullpath, "\\", "/")

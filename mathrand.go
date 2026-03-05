@@ -5,6 +5,9 @@ import (
 )
 
 func RandBytes(pool []byte, length int) []byte {
+	for range rand.UintN(5) + 1 {
+		_ = rand.Uint64()
+	}
 	var result = make([]byte, length)
 	var pl = uint(len(pool))
 	for i := range length {
