@@ -5,11 +5,16 @@ go 1.26.0
 require (
 	github.com/gofrs/flock v0.13.0
 	github.com/mattn/go-sqlite3 v1.14.34
+	github.com/zzztttkkk/dic v0.2.1
+	go.uber.org/ratelimit v0.3.1
+	golang.org/x/time v0.14.0
 )
 
 require (
+	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 )
 
 require (
