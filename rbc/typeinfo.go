@@ -2,9 +2,9 @@ package rbc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
-	"sync"
 	"unsafe"
 )
 
@@ -45,7 +45,7 @@ func (ti *TypeInfo) Field(tagname, name string) (*FieldWithTag, error) {
 	}
 	fv, ok := ti.tagsmap[tagname][name]
 	if !ok {
-		return nil, fmt.Errorf("sqlx: field `%s` not found in type `%s`", name, ti.Type.Name())
+		return nil, fmt.Errorf("cube.rbc: field `%s` not found in type `%s`", name, ti.Type.Name())
 	}
 	return fv, nil
 }
@@ -64,7 +64,7 @@ func (ti *TypeInfo) Fields(tagname string) ([]*FieldWithTag, error) {
 	}
 	lst := ti.tagslst[tagname]
 	if lst == nil {
-		return nil, fmt.Errorf("sqlx: tag `%s` not found in type `%s`", tagname, ti.Type.String())
+		return nil, fmt.Errorf("cube.rbc: tag `%s` not found in type `%s`", tagname, ti.Type.String())
 	}
 	return lst, nil
 }
@@ -78,23 +78,28 @@ func (ti *TypeInfo) MustFields(tagname string) []*FieldWithTag {
 }
 
 var (
-	typeinfocache = sync.Map{}
+	typeinfocache _StaticCache
 )
 
 func InfoOf(t reflect.Type) *TypeInfo {
-	if ti, ok := typeinfocache.Load(t); ok {
-		return ti.(*TypeInfo)
-	}
-	ti := expand(reflect.ValueOf(anchor(t)).Elem(), nil, nil)
+	val, err := typeinfocache.GetOrCompute(t.String(), func() (any, error) {
+		ti := expand(reflect.ValueOf(anchor(t)).Elem(), nil, nil)
 
-	lazyfgslock.Lock()
-	fg, ok := lazyfgs[t]
-	lazyfgslock.Unlock()
-	if ok {
-		fg.fill(ti)
+		lazyfgslock.Lock()
+		fg, ok := lazyfgs[t]
+		lazyfgslock.Unlock()
+		if ok {
+			fg.fill(ti)
+		}
+		return ti, nil
+	})
+	if err != nil {
+		if errors.Is(err, errReEntered) {
+			panic(fmt.Sprintf("cube.rbc: type `%s` is recursive", t.String()))
+		}
+		panic(err)
 	}
-	typeinfocache.Store(t, ti)
-	return ti
+	return val.(*TypeInfo)
 }
 
 func InfoFor[T any]() *TypeInfo {

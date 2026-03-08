@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/zzztttkkk/dic"
+	"github.com/suruiran/cube/dic"
 )
 
 type A struct{}
@@ -25,6 +25,12 @@ type G struct {
 
 func TestDi(t *testing.T) {
 	container := dic.New[string]()
+
+	container.IfReady(
+		func(a *A, f F) {
+			fmt.Println("A F Try After Exec")
+		},
+	)
 
 	container.Register(func() (*C, F, []dic.TokenValue[string]) {
 		return &C{}, F(12), []dic.TokenValue[string]{
@@ -53,8 +59,4 @@ func TestDi(t *testing.T) {
 		fmt.Println("D Try In Exec")
 	}).
 		Run()
-
-	container.IfReady(func(a *A, f F) {
-		fmt.Println("A F Try After Exec")
-	})
 }

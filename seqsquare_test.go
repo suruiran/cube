@@ -10,10 +10,13 @@ import (
 )
 
 func TestSeqSquare_Concurrency(t *testing.T) {
-	sq := NewSeqSquare[string](&SeqSquareOptions{
-		MaxKeys:    100,
-		MaxWaiters: 1000,
-	})
+	sq := NewSeqSquare[string](
+		t.Context(),
+		&SeqSquareOptions{
+			MaxKeys:    100,
+			MaxWaiters: 1000,
+		},
+	)
 
 	const (
 		key         = "0.0"
@@ -31,7 +34,7 @@ func TestSeqSquare_Concurrency(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for j := 0; j < iterations; j++ {
-				unlock, err := sq.Acquire(context.Background(), key)
+				handle, err := sq.Acquire(context.Background(), key)
 				if err != nil {
 					t.Errorf("Routine %d failed to acquire: %v", id, err)
 					return
@@ -41,7 +44,7 @@ func TestSeqSquare_Concurrency(t *testing.T) {
 				if current%10 == 0 {
 					time.Sleep(time.Microsecond * 10)
 				}
-				unlock()
+				handle.Unlock()
 			}
 		}(i)
 	}
@@ -55,13 +58,16 @@ func TestSeqSquare_Concurrency(t *testing.T) {
 }
 
 func TestSeqSquare_ContextTimeout(t *testing.T) {
-	sq := NewSeqSquare[string](&SeqSquareOptions{
-		MaxWaiters: 10,
-	})
+	sq := NewSeqSquare[string](
+		t.Context(),
+		&SeqSquareOptions{
+			MaxWaiters: 10,
+		},
+	)
 
 	key := "timeout_key"
 
-	unlock1, _ := sq.Acquire(context.Background(), key)
+	handle1, _ := sq.Acquire(context.Background(), key)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
 	defer cancel()
@@ -71,13 +77,13 @@ func TestSeqSquare_ContextTimeout(t *testing.T) {
 		t.Errorf("Expected timeout error, got: %v", err)
 	}
 
-	unlock1()
+	handle1.Unlock()
 
-	unlock2, err := sq.Acquire(context.Background(), key)
+	handle2, err := sq.Acquire(context.Background(), key)
 	if err != nil {
 		t.Fatalf("Failed to acquire lock after timeout: %v", err)
 	}
-	unlock2()
+	handle2.Unlock()
 }
 
 func TestSeqSquare_CleanupAndRecount(t *testing.T) {
@@ -86,11 +92,11 @@ func TestSeqSquare_CleanupAndRecount(t *testing.T) {
 		CleanInterval:    time.Second * 1,
 		RecountKeysSteps: 2,
 	}
-	sq := NewSeqSquare[int](opts)
+	sq := NewSeqSquare[int](t.Context(), opts)
 
 	for i := 0; i < 10; i++ {
-		unlock, _ := sq.Acquire(context.Background(), i)
-		unlock()
+		handle, _ := sq.Acquire(context.Background(), i)
+		handle.Unlock()
 	}
 
 	_, err := sq.Acquire(context.Background(), 100)
@@ -101,31 +107,31 @@ func TestSeqSquare_CleanupAndRecount(t *testing.T) {
 	t.Log("Waiting for tryclean to sweep items...")
 	time.Sleep(time.Second * 4)
 
-	unlock, err := sq.Acquire(context.Background(), 999)
+	handle, err := sq.Acquire(context.Background(), 999)
 	if err != nil {
 		t.Errorf("Should be able to acquire after cleanup, but got: %v", err)
 	} else {
-		unlock()
+		handle.Unlock()
 	}
 }
 
 func BenchmarkSeqSquare_AcquireRelease(b *testing.B) {
-	sq := NewSeqSquare[int](nil)
+	sq := NewSeqSquare[int](b.Context(), nil)
 	ctx := b.Context()
 
 	for i := 0; b.Loop(); i++ {
-		unlock, _ := sq.Acquire(ctx, i%128)
-		unlock()
+		handle, _ := sq.Acquire(ctx, i%128)
+		handle.Unlock()
 	}
 }
 
 func BenchmarkSeqSquare_HotKey(b *testing.B) {
-	sq := NewSeqSquare[string](nil)
+	sq := NewSeqSquare[string](b.Context(), nil)
 	ctx := context.Background()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			unlock, _ := sq.Acquire(ctx, "same_key")
-			unlock()
+			handle, _ := sq.Acquire(ctx, "same_key")
+			handle.Unlock()
 		}
 	})
 }

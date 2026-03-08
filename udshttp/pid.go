@@ -33,6 +33,8 @@ func GetRunningPid(fp string) (int, error) {
 		if err == nil {
 			return int(pid), nil
 		}
+	} else {
+		fmt.Printf("cube.udshttp: GetPidExecPath is nil, pid: %d\n", pid)
 	}
 	return 0, err
 }

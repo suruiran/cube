@@ -1,9 +1,7 @@
 package cube
 
-import "golang.org/x/exp/constraints"
-
 type Numeric interface {
-	constraints.Signed | constraints.Float
+	~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr | ~float32 | ~float64
 }
 
 func Abs[T Numeric](x T) T {

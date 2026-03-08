@@ -65,7 +65,6 @@ func RegisterType[T any](tags ...string) {
 	}
 }
 
-//go:inline
 func SpellSteal[T any](tags ...string) {
 	RegisterType[T](tags...)
 }

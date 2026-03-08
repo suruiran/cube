@@ -64,7 +64,7 @@ func (dic *Container[T]) appendone(v reflect.Value) {
 		}
 		_, ok := tvm[maytoken.V]
 		if ok {
-			panic(fmt.Errorf("dic: type `%v`, token `%v` is already registered", vtype, maytoken.V))
+			panic(fmt.Errorf("cube.dic: type `%v`, token `%v` is already registered", vtype, maytoken.V))
 		}
 		tvm[maytoken.V] = v
 		dic.tokenvalpool[vtype] = tvm
@@ -73,7 +73,7 @@ func (dic *Container[T]) appendone(v reflect.Value) {
 
 	_, ok := dic.valpool[vtype]
 	if ok {
-		panic(fmt.Errorf("dic: `%s` is already registered", vtype))
+		panic(fmt.Errorf("cube.dic: `%s` is already registered", vtype))
 	}
 	dic.valpool[vtype] = v
 }
@@ -99,7 +99,7 @@ type errTokenNotFound struct {
 }
 
 func (e *errTokenNotFound) Error() string {
-	return fmt.Sprintf("dic: type `%s` token `%s` not found", e.rtype, e.token)
+	return fmt.Sprintf("cube.dic: type `%s` token `%s` not found", e.rtype, e.token)
 }
 
 var _ error = (*errTokenNotFound)(nil)
@@ -130,7 +130,7 @@ func (dic *Container[T]) getbytoken(token T, k reflect.Type) reflect.Value {
 func (dic *Container[T]) mkfnc(fnc any) *_DiFnc {
 	rv := reflect.ValueOf(fnc)
 	if rv.IsNil() || rv.Kind() != reflect.Func {
-		panic(fmt.Errorf("dic: `%s` is not a function", fnc))
+		panic(fmt.Errorf("cube.dic: `%s` is not a function", fnc))
 	}
 
 	ele := &_DiFnc{fnc: rv}
@@ -141,7 +141,7 @@ func (dic *Container[T]) mkfnc(fnc any) *_DiFnc {
 }
 
 var (
-	ErrContainerAlreadyExecuted = errors.New("dic: container already executed")
+	ErrContainerAlreadyExecuted = errors.New("cube.dic: container already executed")
 )
 
 func (dic *Container[T]) Register(fnc any) *Container[T] {
@@ -183,10 +183,16 @@ func (dic *Container[T]) execAsync(ele *_DiFnc) bool {
 		if !ok {
 			return false
 		}
-		for _, rv := range rvs {
-			rev, ok := rv.Interface().(error)
+		if len(rvs) > 0 {
+			last := rvs[len(rvs)-1]
+			rev, ok := last.Interface().(error)
 			if ok {
-				panic(fmt.Errorf("async paniced: %s, %s", runtime.FuncForPC(ele.fnc.Pointer()).Name(), rev))
+				panic(
+					fmt.Errorf(
+						"cube.dic: async function `%s`, return error: %s",
+						runtime.FuncForPC(ele.fnc.Pointer()).Name(), rev,
+					),
+				)
 			}
 		}
 		ele.done = true

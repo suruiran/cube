@@ -3,6 +3,7 @@ package rbc
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -203,4 +204,15 @@ func BenchmarkGetPtrWithAegis(b *testing.B) {
 	for b.Loop() {
 		UpdatedAtField.GetPtrWithAegis(b.Context(), objuptr) //nolint:errcheck
 	}
+}
+
+func TestRecursive(t *testing.T) {
+	fmt.Println(os.Getpid())
+
+	type AAA struct {
+		A1 int64 `db:"a1"`
+		*AAA
+	}
+
+	fmt.Println(InfoFor[AAA]())
 }

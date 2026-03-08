@@ -24,10 +24,6 @@ func pageinternal[T any](ctx context.Context, stmt *Stmt, rows *sql.Rows, page [
 	size := 0
 
 	for rows.Next() {
-		if ctx.Err() != nil {
-			return nil, true, ctx.Err()
-		}
-
 		filltmp(shape, size, &tmp)
 		if err := rows.Scan(tmp...); err != nil {
 			return nil, true, err

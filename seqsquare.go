@@ -13,14 +13,14 @@ type _LockItem struct {
 	key    any
 	onidle func(*_LockItem)
 
-	mutext  sync.Mutex
+	mutex   sync.Mutex
 	locked  bool
 	waiters []*_Waiter
 }
 
 type _Waiter struct {
-	ch    *chan struct{}
-	alive *atomic.Bool
+	ch    chan struct{}
+	alive atomic.Bool
 }
 
 func (li *_LockItem) dorelease() (*_Waiter, bool) {
@@ -47,16 +47,16 @@ func (li *_LockItem) dorelease() (*_Waiter, bool) {
 }
 
 func (li *_LockItem) release() {
-	li.mutext.Lock()
+	li.mutex.Lock()
 
 	w, more := li.dorelease()
 	if !more {
-		li.mutext.Unlock()
+		li.mutex.Unlock()
 		li.onidle(li)
 		return
 	}
-	li.mutext.Unlock()
-	(*w.ch) <- struct{}{}
+	li.mutex.Unlock()
+	w.ch <- struct{}{}
 }
 
 type SeqSquare[K comparable] struct {
@@ -124,7 +124,7 @@ type SeqSquareOptions struct {
 	RecountKeysSteps int
 }
 
-func NewSeqSquare[K comparable](opts *SeqSquareOptions) *SeqSquare[K] {
+func NewSeqSquare[K comparable](ctx context.Context, opts *SeqSquareOptions) *SeqSquare[K] {
 	if opts == nil {
 		opts = &SeqSquareOptions{}
 	}
@@ -153,14 +153,25 @@ func NewSeqSquare[K comparable](opts *SeqSquareOptions) *SeqSquare[K] {
 		maxkeys:    opts.MaxKeys,
 	}
 	Fly(func() {
+		ticker := time.NewTicker(opts.CleanInterval)
+		defer ticker.Stop()
+
 		lc := 1
 		for {
-			time.Sleep(opts.CleanInterval)
-			obj.tryclean()
-			if lc%opts.RecountKeysSteps == 0 {
-				obj.try_recount_keys(opts.RecountOverlapCorrectionRate)
+			select {
+			case <-ctx.Done():
+				{
+					return
+				}
+			case <-ticker.C:
+				{
+					obj.tryclean()
+					if lc%opts.RecountKeysSteps == 0 {
+						obj.try_recount_keys(opts.RecountOverlapCorrectionRate)
+					}
+					lc++
+				}
 			}
-			lc++
 		}
 	})
 	return obj
@@ -177,7 +188,17 @@ var (
 	}
 )
 
-func (sl *SeqSquare[K]) Acquire(ctx context.Context, key K) (func(), error) {
+type IUnlocker interface {
+	Unlock()
+}
+
+type _ItemPtr struct{ item *_LockItem }
+
+func (handle _ItemPtr) Unlock() { handle.item.release() }
+
+var _ IUnlocker = _ItemPtr{}
+
+func (sl *SeqSquare[K]) Acquire(ctx context.Context, key K) (IUnlocker, error) {
 	var keyav any = key
 	kc := sl.inacc_count.Add(1)
 	if sl.maxkeys > 0 && kc > sl.maxkeys {
@@ -186,42 +207,42 @@ func (sl *SeqSquare[K]) Acquire(ctx context.Context, key K) (func(), error) {
 	}
 
 	_item_av := _lockitems_pool.Get()
-	_item := _item_av.(*_LockItem)
-	itemav, loaded := sl.items.LoadOrStore(keyav, _item)
+	itemav, loaded := sl.items.LoadOrStore(keyav, _item_av)
 	if loaded {
 		_lockitems_pool.Put(_item_av)
 		sl.inacc_count.Add(-1)
-	} else {
-		_item.onidle = sl.onidle
-		_item.key = keyav
+	}
+	item := itemav.(*_LockItem)
+
+	item.busy.Store(true)
+	item.mutex.Lock()
+
+	if item.onidle == nil {
+		item.onidle = sl.onidle
+		item.key = keyav
 	}
 
-	item := itemav.(*_LockItem)
-	item.busy.Store(true)
-
-	item.mutext.Lock()
 	if !item.locked {
 		item.locked = true
-		item.mutext.Unlock()
-		return item.release, nil
+		item.mutex.Unlock()
+		return _ItemPtr{item: item}, nil
 	}
 
 	if sl.maxwaiters > 0 && len(item.waiters) >= sl.maxwaiters {
-		item.mutext.Unlock()
+		item.mutex.Unlock()
 		return nil, ErrSeqSquareQueueFull
 	}
 
-	ch := make(chan struct{}, 1)
-	alive := new(atomic.Bool)
+	var waiter = &_Waiter{
+		ch: make(chan struct{}, 1),
+	}
+	alive := &waiter.alive
 	alive.Store(true)
-	item.waiters = append(
-		item.waiters,
-		&_Waiter{
-			ch:    &ch,
-			alive: alive,
-		},
-	)
-	item.mutext.Unlock()
+	ch := waiter.ch
+
+	item.waiters = append(item.waiters, waiter)
+
+	item.mutex.Unlock()
 
 	for {
 		select {
@@ -239,7 +260,7 @@ func (sl *SeqSquare[K]) Acquire(ctx context.Context, key K) (func(), error) {
 			}
 		case <-ch:
 			{
-				return item.release, nil
+				return _ItemPtr{item: item}, nil
 			}
 		}
 	}
