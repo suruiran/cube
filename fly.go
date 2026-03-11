@@ -10,7 +10,7 @@ func fly_internal(fnc func(), rethrow bool) {
 					"cube.fly: panic",
 					slog.String("func", FuncName(fnc)),
 					slog.Any("panic", rv),
-					slog.String("stacktrace", ReadStack(2, 20)),
+					slog.String("stacktrace", ReadStack(3, 20)),
 				)
 				if rethrow {
 					panic(rv)

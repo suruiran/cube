@@ -2,11 +2,10 @@ package cube
 
 import (
 	"bytes"
+	"encoding/json"
 	"reflect"
 	"strconv"
 	"unsafe"
-
-	json "github.com/goccy/go-json"
 )
 
 func MustMarshalJSON(v any) []byte {

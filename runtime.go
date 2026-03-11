@@ -15,7 +15,7 @@ func FuncName(act any) string {
 
 func ReadStack(skip int, size int) string {
 	pc := make([]uintptr, size)
-	n := runtime.Callers(skip+2, pc)
+	n := runtime.Callers(skip, pc)
 	if n == 0 {
 		return "empty stack"
 	}

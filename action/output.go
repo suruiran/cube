@@ -2,10 +2,10 @@ package action
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"unsafe"
 
-	"github.com/goccy/go-json"
 	"github.com/suruiran/cube"
 )
 
@@ -31,7 +31,7 @@ var (
 
 func (c *Output[T]) MarshalJSON() ([]byte, error) {
 	if c.val.Valid {
-		return json.Marshal(c.val.V)
+		return cube.MarshalJSON(c.val.V)
 	}
 	return jsonNull, nil
 }

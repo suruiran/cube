@@ -14,7 +14,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/suruiran/cube"
 	"github.com/suruiran/cube/logx"
@@ -170,12 +169,12 @@ func Register[Input any, Output any](mux *http.ServeMux, logger *slog.Logger, fn
 		var input Input
 		if isptr {
 			ptrv := reflect.New(it)
-			err = json.Unmarshal(bs, ptrv.Interface())
+			err = cube.UnmarshalJSON(bs, ptrv.Interface())
 			if err == nil {
 				input = ptrv.Interface().(Input)
 			}
 		} else {
-			err = json.Unmarshal(bs, &input)
+			err = cube.UnmarshalJSON(bs, &input)
 		}
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)

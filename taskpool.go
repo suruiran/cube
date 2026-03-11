@@ -22,10 +22,12 @@ var _ ITaskItem = TaskFuncType(nil)
 type TaskPool struct {
 	closed atomic.Bool
 
-	tasks  chan ITaskItem
-	wg     sync.WaitGroup
-	opts   *TaskPoolOptions
-	cancel context.CancelFunc
+	tasks chan ITaskItem
+	wg    sync.WaitGroup
+
+	ctx     context.Context
+	cancel  context.CancelFunc
+	onpanic func(ctx context.Context, item ITaskItem, err any)
 }
 
 type TaskPoolOptions struct {
@@ -43,10 +45,10 @@ func NewTaskPool(opts *TaskPoolOptions) *TaskPool {
 		opts.MaxQueueSize = opts.Workers * 2
 	}
 	pool := &TaskPool{
-		tasks: make(chan ITaskItem, opts.MaxQueueSize),
-		opts:  opts,
+		tasks:   make(chan ITaskItem, opts.MaxQueueSize),
+		onpanic: opts.OnPanic,
 	}
-	opts.Context, pool.cancel = context.WithCancel(opts.Context)
+	pool.ctx, pool.cancel = context.WithCancel(opts.Context)
 
 	pool.run(opts.Workers)
 	return pool
@@ -66,13 +68,16 @@ func (pool *TaskPool) exec(task ITaskItem) {
 	defer func() {
 		pool.wg.Done()
 		if err := recover(); err != nil {
-			if pool.opts.OnPanic != nil {
-				pool.opts.OnPanic(pool.opts.Context, task, err)
+			if pool.onpanic != nil {
+				pool.onpanic(pool.ctx, task, err)
 			}
 		}
 	}()
 
-	task.Exec(pool.opts.Context)
+	if pool.ctx.Err() != nil {
+		return
+	}
+	task.Exec(pool.ctx)
 }
 
 var (
@@ -88,6 +93,7 @@ func (pool *TaskPool) Add(task ITaskItem) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if pool.closed.Load() {
+				pool.wg.Done()
 				err = ErrTaskPoolClosed
 			} else {
 				panic(r)
@@ -95,21 +101,24 @@ func (pool *TaskPool) Add(task ITaskItem) (err error) {
 		}
 	}()
 
+	pool.wg.Add(1)
+
 	select {
 	case pool.tasks <- task:
 		{
-			pool.wg.Add(1)
+			return nil
 		}
-	case <-pool.opts.Context.Done():
+	case <-pool.ctx.Done():
 		{
-			return pool.opts.Context.Err()
+			pool.wg.Done()
+			return pool.ctx.Err()
 		}
 	default:
 		{
+			pool.wg.Done()
 			return ErrTaskPoolQueueFull
 		}
 	}
-	return nil
 }
 
 func (pool *TaskPool) AddFunc(f func(ctx context.Context)) error {
@@ -121,9 +130,14 @@ func (pool *TaskPool) Close(wait bool) {
 		return
 	}
 
-	pool.cancel()
-	close(pool.tasks)
 	if wait {
+		pool.wg.Wait()
+	}
+
+	close(pool.tasks)
+	pool.cancel()
+
+	if !wait {
 		pool.wg.Wait()
 	}
 }

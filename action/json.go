@@ -2,12 +2,11 @@ package action
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
-
-	"github.com/goccy/go-json"
 )
 
 type _JsonSerializer struct{}

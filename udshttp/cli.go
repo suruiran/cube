@@ -18,7 +18,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/goccy/go-json"
 	"github.com/gofrs/flock"
 	"github.com/suruiran/cube"
 )
@@ -118,11 +117,6 @@ func spwan(cli *Client) error {
 		cli.logger.Error("start server process failed", slog.Any("error", err))
 		return err
 	}
-
-	cli.logger.Debug(
-		"server process started",
-		slog.Int("pid", cmd.Process.Pid),
-	)
 
 	cube.Fly(func() {
 		cli.logger.Debug(
@@ -269,12 +263,12 @@ func Request[Input any, Output any](ctx context.Context, cli *Client, input Inpu
 
 	if isptr {
 		ptrv := reflect.New(ot)
-		err = json.Unmarshal(bs, ptrv.Interface())
+		err = cube.UnmarshalJSON(bs, ptrv.Interface())
 		if err == nil {
 			out = ptrv.Interface().(Output)
 		}
 	} else {
-		err = json.Unmarshal(bs, &out)
+		err = cube.UnmarshalJSON(bs, &out)
 	}
 
 	if err == nil {

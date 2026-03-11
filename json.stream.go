@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	json "github.com/goccy/go-json"
+	"encoding/json"
 )
 
 var (
