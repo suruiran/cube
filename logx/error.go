@@ -32,7 +32,7 @@ func ErrorWithStacktrace(e error, opts *StacktraceOptions) slog.Attr {
 	return slog.Group(
 		"errtrace",
 		slog.String("error", e.Error()),
-		slog.String("trace", cube.ReadStack(opts.Size, opts.Skip)),
+		slog.String("trace", cube.ReadStack(opts.Skip, opts.Size)),
 	)
 }
 
@@ -52,6 +52,6 @@ func RecoveredWithStacktrace(pv any, opts *StacktraceOptions) slog.Attr {
 	return slog.Group(
 		"panictrace",
 		item,
-		slog.String("trace", cube.ReadStack(opts.Size, opts.Skip)),
+		slog.String("trace", cube.ReadStack(opts.Skip, opts.Size)),
 	)
 }

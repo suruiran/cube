@@ -52,25 +52,29 @@ func NewServerWithLogger(fp string, mux *http.ServeMux, log *slog.Logger) (*Serv
 	})
 
 	if log == nil {
-		nobuf := cube.Env("CUBE_UDS_LOG_NOBUFFERED", false)
-		bufsize := 4096
-		if nobuf {
-			bufsize = -1
-		}
+		if cube.Env("CUBE_UDS_LOG_DEFAULT", false) {
+			log = slog.Default()
+		} else {
+			nobuf := cube.Env("CUBE_UDS_LOG_NOBUFFERED", false)
+			bufsize := 4096
+			if nobuf {
+				bufsize = -1
+			}
 
-		log, err = logx.New(&logx.Opts{
-			Filename:   fmt.Sprintf("%s.log", fp),
-			Level:      cube.Env("CUBE_UDS_LOG_LEVEL", slog.LevelInfo),
-			AddSource:  cube.Env("CUBE_UDS_LOG_SOURCE", false),
-			WithStdout: cube.Env("CUBE_UDS_LOG_STDOUT", false),
-			BufferSize: bufsize,
-			Rolling: &logx.RollingOptions{
-				Kind:    logx.RollingKindDaily,
-				Backups: 30,
-			},
-		})
-		if err != nil {
-			return nil, err
+			log, err = logx.New(&logx.Opts{
+				Filename:   fmt.Sprintf("%s.log", fp),
+				Level:      cube.Env("CUBE_UDS_LOG_LEVEL", slog.LevelInfo),
+				AddSource:  cube.Env("CUBE_UDS_LOG_SOURCE", false),
+				WithStdout: cube.Env("CUBE_UDS_LOG_STDOUT", false),
+				BufferSize: bufsize,
+				Rolling: &logx.RollingOptions{
+					Kind:    logx.RollingKindDaily,
+					Backups: 30,
+				},
+			})
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
