@@ -256,7 +256,7 @@ func Request[Input any, Output any](ctx context.Context, cli *Client, input Inpu
 			scopelog.Error("bad request", slog.Any("error", err))
 			return out, err
 		}
-		err := fmt.Errorf("response status code is %d: %s", resp.StatusCode, string(bs))
+		err := fmt.Errorf("%s, %s", resp.Status, string(bs))
 		scopelog.Error("response status code is not ok", slog.Any("error", err))
 		return out, err
 	}

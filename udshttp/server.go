@@ -133,11 +133,31 @@ func Register[Input any, Output any](mux *http.ServeMux, logger *slog.Logger, fn
 	}
 
 	mux.HandleFunc(fmt.Sprintf("/%s", strings.ToLower(it.Name())), func(w http.ResponseWriter, r *http.Request) {
+		reqid, _ := strconv.ParseInt(r.Header.Get(HeaderReqId), 10, 64)
+		is_cancelable := r.Header.Get(HeaderIsCancelable) == "true"
+		sent := false
+
 		defer func() {
-			ev := recover()
-			if ev != nil {
-				logger.Error("udshttp server handle paniced", slog.String("path", r.URL.Path), slog.Any("err", ev))
+			rv := recover()
+			if rv == nil {
+				return
 			}
+			if is_cancelable {
+				Cancel(reqid)
+			}
+			logger.Error("udshttp server handle paniced", slog.String("path", r.URL.Path), slog.Any("err", rv))
+			if sent {
+				return
+			}
+
+			var msg string
+			if err, ok := rv.(error); ok {
+				msg = err.Error()
+			} else {
+				msg = fmt.Sprintf("%v", rv)
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(msg))
 		}()
 
 		if OnReq != nil && !OnReq(r.Context(), r) {
@@ -186,9 +206,6 @@ func Register[Input any, Output any](mux *http.ServeMux, logger *slog.Logger, fn
 			return
 		}
 
-		is_cancelable := r.Header.Get(HeaderIsCancelable) == "true"
-		reqid, _ := strconv.ParseInt(r.Header.Get(HeaderReqId), 10, 64)
-
 		ctx, cancel := context.WithCancel(r.Context())
 		cancelbyreqids.Store(reqid, func() {
 			cancel()
@@ -204,6 +221,8 @@ func Register[Input any, Output any](mux *http.ServeMux, logger *slog.Logger, fn
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(err.Error()))
+
+			sent = true
 			logger.Error("udshttp server handle function failed", slog.String("path", r.URL.Path), slog.Any("err", err), slog.Any("input", input))
 			return
 		}
@@ -214,6 +233,7 @@ func Register[Input any, Output any](mux *http.ServeMux, logger *slog.Logger, fn
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(bs)
 
+		sent = true
 		logger.Debug("udshttp server handle success", slog.String("path", r.URL.Path), slog.Any("input", input), slog.Any("output", output))
 	})
 }
