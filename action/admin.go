@@ -48,7 +48,7 @@ func (ac *_FsAdminChecker) make(req *http.Request) (func(), error) {
 	filename := ""
 	fullpath := ""
 	for {
-		filename = string(cube.RandLowerAsciiBytes(12))
+		filename = string(cube.RandChoices(cube.AsciiChars, 12))
 		fullpath = filepath.Join(ac.fsdir, filename)
 		if _, err := os.Stat(fullpath); os.IsNotExist(err) {
 			break
@@ -63,7 +63,7 @@ func (ac *_FsAdminChecker) make(req *http.Request) (func(), error) {
 
 	cleanup := func() { _ = os.Remove(fullpath) }
 
-	buf := cube.RandAsciiBytes(int(ac.filesize))
+	buf := cube.RandChoices(cube.AsciiChars, int(ac.filesize))
 	_, err = fobj.Write(buf)
 	if err != nil {
 		return nil, fmt.Errorf("action.FsAdminChecker: write file error: %w", err)

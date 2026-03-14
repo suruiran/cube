@@ -11,26 +11,42 @@ import (
 	"strings"
 
 	"github.com/suruiran/cube/logx"
-	"go.uber.org/ratelimit"
-)
-
-var (
-	adminrl = ratelimit.New(1)
 )
 
 type ISession interface {
-	Take()
-	TakeN(times int)
+	Take() bool
+	TakeN(times int) bool
 }
 
 type ISessionProvider interface {
 	Get(req *http.Request) (ISession, bool)
-	Ensure(req *http.Request, respw http.ResponseWriter) ISession
+	Ensure(req *http.Request, respw http.ResponseWriter) (ISession, error)
 }
 
 var (
 	internalErrorMsg = []byte("internal server error")
 )
+
+type _Respw struct {
+	http.ResponseWriter
+	wrote bool
+}
+
+func (rw *_Respw) Header() http.Header {
+	return rw.ResponseWriter.Header()
+}
+
+func (rw *_Respw) Write(b []byte) (int, error) {
+	rw.wrote = true
+	return rw.ResponseWriter.Write(b)
+}
+
+func (rw *_Respw) WriteHeader(statusCode int) {
+	rw.wrote = true
+	rw.ResponseWriter.WriteHeader(statusCode)
+}
+
+var _ http.ResponseWriter = (*_Respw)(nil)
 
 func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string) http.Handler {
 	logger := group.logger
@@ -76,6 +92,9 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 
 	handler := http.HandlerFunc(func(respw http.ResponseWriter, req *http.Request) {
 		req.Body = http.MaxBytesReader(respw, req.Body, MaxRequestBodySize)
+		_w := &_Respw{ResponseWriter: respw}
+		respw = _w
+
 		if req.Method == http.MethodOptions || req.Method == http.MethodConnect || req.Method == http.MethodTrace {
 			respw.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -99,7 +118,18 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 			}
 		}
 
-		logic_handled := false
+		senderr := func(err error) {
+			if _w.wrote {
+				return
+			}
+			he, ok := tohe(err)
+			if !ok {
+				respw.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			respw.WriteHeader(he.Code())
+			_, _ = respw.Write([]byte(he.Error()))
+		}
 
 		defer func() {
 			_ = req.Body.Close()
@@ -108,7 +138,7 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 			if rv == nil {
 				return
 			}
-			if !logic_handled {
+			if !_w.wrote {
 				he, ok := rv.(IHttpError)
 				if ok {
 					code := he.Code()
@@ -122,16 +152,15 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 				}
 				respw.WriteHeader(http.StatusInternalServerError)
 			}
-			logger.Error("ActionHandlePaniced", slog.String("name", actionname), logx.RecoveredWithStacktrace(rv, nil))
+			logger.Error("ActionHandlePaniced", slog.String("name", actionname), logx.RecoveredWithStacktrace(rv, nil), slog.Bool("wrote", _w.wrote))
 		}()
 
 		var session ISession
 		var err error
-
 		switch actionitem.Opts.SessionPolicy {
 		case SessionPolicyKindAuto:
 			{
-				session = group.sessionprovider.Ensure(req, respw)
+				session, err = group.sessionprovider.Ensure(req, respw)
 				break
 			}
 		case SessionPolicyKindRequire:
@@ -140,9 +169,9 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 				session, ok = group.sessionprovider.Get(req)
 				if !ok {
 					if cfg.Debug {
-						session = group.sessionprovider.Ensure(req, respw)
+						session, err = group.sessionprovider.Ensure(req, respw)
 					} else {
-						respw.WriteHeader(http.StatusBadRequest)
+						respw.WriteHeader(http.StatusForbidden)
 						return
 					}
 				}
@@ -153,6 +182,10 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 				break
 			}
 		}
+		if err != nil {
+			senderr(err)
+			return
+		}
 
 		remoteaddr := group.remoteipprovider.Get(req)
 		if actionitem.Opts.RequireAdmin {
@@ -161,7 +194,6 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 				return
 			}
 			if err := group.adminchecker.Check(req.Context(), remoteaddr, req); err != nil {
-				adminrl.Take()
 				respw.WriteHeader(http.StatusNotFound)
 				group.logger.Error("RejectedAdminCall.Check", slog.String("remoteaddr", remoteaddr), logx.ErrorWithStacktrace(err, nil))
 				return
@@ -169,10 +201,15 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 		}
 
 		if session != nil {
+			rlok := false
 			if actionitem.Opts.RateLimitTakeN > 0 {
-				session.TakeN(actionitem.Opts.RateLimitTakeN)
+				rlok = session.TakeN(actionitem.Opts.RateLimitTakeN)
 			} else {
-				session.Take()
+				rlok = session.Take()
+			}
+			if !rlok {
+				respw.WriteHeader(http.StatusTooManyRequests)
+				return
 			}
 			if req.Context().Err() != nil {
 				return
@@ -187,15 +224,7 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 			return
 		}
 
-		logic_handled = true
-
-		he, ok := tohe(err)
-		if ok {
-			respw.WriteHeader(he.Code())
-			_, _ = respw.Write([]byte(he.Error()))
-			return
-		}
-		respw.WriteHeader(http.StatusInternalServerError)
+		senderr(err)
 		logger.Error("ActionHandleFailed", slog.String("name", actionname), logx.ErrorWithStacktrace(err, nil))
 	})
 

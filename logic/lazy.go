@@ -19,8 +19,21 @@ func (tb *LazyBool) Bool() (tv bool) {
 	return
 }
 
-func Lazy(fn func() bool) *LazyBool { return &LazyBool{fn: fn} }
+func Lazy[T any](fn func() T) LazyBool {
+	return LazyBool{
+		fn: func() bool {
+			val := any(fn())
+			return _tobool(val, 0, val)
+		},
+	}
+}
 
-func LazyWithRecovery(fn func() bool, recovery func(val any) bool) *LazyBool {
-	return &LazyBool{fn: fn, recovery: recovery}
+func LazyWithRecovery[T any](fn func() T, recovery func(val any) bool) LazyBool {
+	return LazyBool{
+		fn: func() bool {
+			val := any(fn())
+			return _tobool(val, 0, val)
+		},
+		recovery: recovery,
+	}
 }

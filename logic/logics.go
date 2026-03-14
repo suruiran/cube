@@ -11,6 +11,10 @@ func _tobool(val any, derefcount int, rawval any) bool {
 	switch val := val.(type) {
 	case string:
 		return val != ""
+	case LazyBool:
+		{
+			return val.Bool()
+		}
 	case *LazyBool:
 		{
 			return val.Bool()
@@ -51,7 +55,7 @@ func _tobool(val any, derefcount int, rawval any) bool {
 			}
 			return _tobool(vv.Elem().Interface(), derefcount+1, rawval)
 		}
-	case reflect.Slice, reflect.Map, reflect.Array:
+	case reflect.Slice, reflect.Map:
 		{
 			return vv.Len() != 0
 		}

@@ -86,11 +86,10 @@ func TestSeqSquare_ContextTimeout(t *testing.T) {
 	handle2.Unlock()
 }
 
-func TestSeqSquare_CleanupAndRecount(t *testing.T) {
+func TestSeqSquare_Cleanup(t *testing.T) {
 	opts := &SeqSquareOptions{
-		MaxKeys:          10,
-		CleanInterval:    time.Second * 1,
-		RecountKeysSteps: 2,
+		MaxKeys:       10,
+		CleanInterval: time.Second * 1,
 	}
 	sq := NewSeqSquare[int](t.Context(), opts)
 

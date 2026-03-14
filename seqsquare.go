@@ -6,16 +6,18 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/suruiran/cube/cmap"
 )
 
-type _LockItem struct {
-	busy   atomic.Bool
-	key    any
-	onidle func(*_LockItem)
+type _Seq[K comparable] struct {
+	key    K
+	square *SeqSquare[K]
 
-	mutex   sync.Mutex
-	locked  bool
-	waiters []*_Waiter
+	mutex    sync.Mutex
+	locked   bool
+	waiters  []*_Waiter
+	notinmap bool
 }
 
 type _Waiter struct {
@@ -23,7 +25,7 @@ type _Waiter struct {
 	alive atomic.Bool
 }
 
-func (li *_LockItem) dorelease() (*_Waiter, bool) {
+func (li *_Seq[K]) dorelease() (*_Waiter, bool) {
 	idx := 0
 	for _, w := range li.waiters {
 		if !w.alive.Load() {
@@ -36,63 +38,50 @@ func (li *_LockItem) dorelease() (*_Waiter, bool) {
 
 	if len(li.waiters) < 1 {
 		li.locked = false
-		li.busy.Store(false)
 		return nil, false
 	}
 
 	w := li.waiters[0]
 	li.waiters = li.waiters[1:]
-	li.busy.Store(true)
 	return w, true
 }
 
-func (li *_LockItem) release() {
+func (li *_Seq[K]) release() {
 	li.mutex.Lock()
 
 	w, more := li.dorelease()
 	if !more {
 		li.mutex.Unlock()
-		li.onidle(li)
+
+		li.square.onidle(li)
 		return
 	}
 	li.mutex.Unlock()
+
 	w.ch <- struct{}{}
 }
 
 type SeqSquare[K comparable] struct {
-	items       sync.Map
-	inacc_count atomic.Int64
+	items *cmap.Map[K, *_Seq[K]]
 
 	idleslock sync.Mutex
-	idles     []*_LockItem
+	idles     []*_Seq[K]
 	inidles   Set[K]
-	tmpidles  []*_LockItem
+	tmpidles  []*_Seq[K]
 
 	maxwaiters int
 	maxkeys    int64
 }
 
-func (sl *SeqSquare[K]) onidle(item *_LockItem) {
+func (sl *SeqSquare[K]) onidle(item *_Seq[K]) {
 	sl.idleslock.Lock()
 	defer sl.idleslock.Unlock()
 
-	_key := item.key.(K)
-	if sl.inidles.Has(_key) {
+	if sl.inidles.Has(item.key) {
 		return
 	}
 	sl.idles = append(sl.idles, item)
-	sl.inidles.Add(_key)
-}
-
-func (sl *SeqSquare[K]) try_recount_keys(overlap_factor float64) {
-	begin := sl.inacc_count.Load()
-	rc := 0
-	sl.items.Range(func(_, _ any) bool {
-		rc++
-		return true
-	})
-	inc := max(int64(float64((sl.inacc_count.Load()-begin))*overlap_factor), 0)
-	sl.inacc_count.Store(int64(rc) + inc)
+	sl.inidles.Add(item.key)
 }
 
 func (sl *SeqSquare[K]) tryclean() {
@@ -102,37 +91,33 @@ func (sl *SeqSquare[K]) tryclean() {
 	sl.idleslock.Unlock()
 
 	for _, item := range sl.tmpidles {
-		if item.locked || item.busy.Load() {
-			continue
-		}
-		if _, ok := sl.items.LoadAndDelete(item.key); ok {
-			sl.inacc_count.Add(-1)
+		if item.mutex.TryLock() {
+			if item.locked {
+				item.mutex.Unlock()
+				continue
+			}
+			sl.items.Delete(item.key)
+			item.notinmap = true
+			item.mutex.Unlock()
 		}
 	}
 	sl.tmpidles = sl.tmpidles[:0]
 }
 
 type SeqSquareOptions struct {
-	MaxKeys                      int64
-	MaxKeysToleranceMargin       float64
-	RecountOverlapCorrectionRate float64
-	// MaxWaiters maximum number of waiters per key
-	MaxWaiters int
-	// CleanInterval how often to clean up idle items
+	// MaxKeys maximum number of keys, default 1024. It should be greater than your expected.
+	MaxKeys       int64
+	MaxWaiters    int
 	CleanInterval time.Duration
-	// RecountKeysSteps how many intervals to recount keys
-	RecountKeysSteps int
+	BucketCount   int
 }
 
 func NewSeqSquare[K comparable](ctx context.Context, opts *SeqSquareOptions) *SeqSquare[K] {
 	if opts == nil {
 		opts = &SeqSquareOptions{}
 	}
-	if opts.MaxKeysToleranceMargin <= 1 {
-		opts.MaxKeysToleranceMargin = 1.2
-	}
 	if opts.MaxKeys <= 0 {
-		opts.MaxKeys = 256
+		opts.MaxKeys = 1024
 	}
 	if opts.MaxWaiters <= 0 {
 		opts.MaxWaiters = 32
@@ -140,23 +125,19 @@ func NewSeqSquare[K comparable](ctx context.Context, opts *SeqSquareOptions) *Se
 	if opts.CleanInterval <= 0 {
 		opts.CleanInterval = time.Minute * 10
 	}
-	if opts.RecountKeysSteps <= 0 {
-		opts.RecountKeysSteps = 6
+	if opts.BucketCount <= 0 {
+		opts.BucketCount = 16
 	}
-	if opts.RecountOverlapCorrectionRate <= 0 {
-		opts.RecountOverlapCorrectionRate = 0.6
-	}
-
 	obj := &SeqSquare[K]{
 		inidles:    make(Set[K]),
-		maxwaiters: int(float64(opts.MaxWaiters) * opts.MaxKeysToleranceMargin),
+		maxwaiters: opts.MaxWaiters,
 		maxkeys:    opts.MaxKeys,
+		items:      cmap.New[K, *_Seq[K]](uint64(opts.BucketCount)),
 	}
 	Fly(func() {
 		ticker := time.NewTicker(opts.CleanInterval)
 		defer ticker.Stop()
 
-		lc := 1
 		for {
 			select {
 			case <-ctx.Done():
@@ -166,10 +147,6 @@ func NewSeqSquare[K comparable](ctx context.Context, opts *SeqSquareOptions) *Se
 			case <-ticker.C:
 				{
 					obj.tryclean()
-					if lc%opts.RecountKeysSteps == 0 {
-						obj.try_recount_keys(opts.RecountOverlapCorrectionRate)
-					}
-					lc++
 				}
 			}
 		}
@@ -182,67 +159,64 @@ var (
 	ErrSeqSquareKeysFull  = errors.New("cube.SeqSquare: keys full")
 )
 
-var (
-	_lockitems_pool = sync.Pool{
-		New: func() any { return &_LockItem{} },
-	}
-)
-
 type IUnlocker interface {
 	Unlock()
 }
 
-type _ItemPtr struct{ item *_LockItem }
+type _ItemPtr[K comparable] struct{ item *_Seq[K] }
 
-func (handle _ItemPtr) Unlock() { handle.item.release() }
+func (handle _ItemPtr[K]) Unlock() { handle.item.release() }
 
-var _ IUnlocker = _ItemPtr{}
+var _ IUnlocker = _ItemPtr[int]{}
 
 func (sl *SeqSquare[K]) Acquire(ctx context.Context, key K) (IUnlocker, error) {
-	var keyav any = key
-	kc := sl.inacc_count.Add(1)
-	if sl.maxkeys > 0 && kc > sl.maxkeys {
-		sl.inacc_count.Add(-1)
-		return nil, ErrSeqSquareKeysFull
+	var seq *_Seq[K]
+	var err error
+
+	for {
+		seq, _, err = sl.items.GetOrCompute(
+			key,
+			func() (*_Seq[K], error) {
+				if sl.maxkeys > 0 && sl.items.ApproxLen() >= int(sl.maxkeys) {
+					return nil, ErrSeqSquareKeysFull
+				}
+				return &_Seq[K]{square: sl, key: key}, nil
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		seq.mutex.Lock()
+		if seq.notinmap {
+			seq.mutex.Unlock()
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		break
 	}
 
-	_item_av := _lockitems_pool.Get()
-	itemav, loaded := sl.items.LoadOrStore(keyav, _item_av)
-	if loaded {
-		_lockitems_pool.Put(_item_av)
-		sl.inacc_count.Add(-1)
-	}
-	item := itemav.(*_LockItem)
-
-	item.busy.Store(true)
-	item.mutex.Lock()
-
-	if item.onidle == nil {
-		item.onidle = sl.onidle
-		item.key = keyav
+	if !seq.locked {
+		seq.locked = true
+		seq.mutex.Unlock()
+		return _ItemPtr[K]{item: seq}, nil
 	}
 
-	if !item.locked {
-		item.locked = true
-		item.mutex.Unlock()
-		return _ItemPtr{item: item}, nil
-	}
-
-	if sl.maxwaiters > 0 && len(item.waiters) >= sl.maxwaiters {
-		item.mutex.Unlock()
+	if sl.maxwaiters > 0 && len(seq.waiters) >= sl.maxwaiters {
+		seq.mutex.Unlock()
 		return nil, ErrSeqSquareQueueFull
 	}
 
-	var waiter = &_Waiter{
-		ch: make(chan struct{}, 1),
-	}
+	var waiter = &_Waiter{ch: make(chan struct{})}
 	alive := &waiter.alive
 	alive.Store(true)
 	ch := waiter.ch
 
-	item.waiters = append(item.waiters, waiter)
+	seq.waiters = append(seq.waiters, waiter)
 
-	item.mutex.Unlock()
+	seq.mutex.Unlock()
 
 	for {
 		select {
@@ -252,7 +226,7 @@ func (sl *SeqSquare[K]) Acquire(ctx context.Context, key K) (IUnlocker, error) {
 				select {
 				case <-ch:
 					{
-						item.release()
+						seq.release()
 					}
 				default:
 				}
@@ -260,7 +234,7 @@ func (sl *SeqSquare[K]) Acquire(ctx context.Context, key K) (IUnlocker, error) {
 			}
 		case <-ch:
 			{
-				return _ItemPtr{item: item}, nil
+				return _ItemPtr[K]{item: seq}, nil
 			}
 		}
 	}

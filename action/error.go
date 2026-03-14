@@ -18,6 +18,9 @@ func (she *_SimpleHttpError) Code() int {
 }
 
 func (she *_SimpleHttpError) Error() string {
+	if len(she.args) == 0 || she.fmt == "" {
+		return she.fmt
+	}
 	return fmt.Sprintf(she.fmt, she.args...)
 }
 
