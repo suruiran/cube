@@ -3,11 +3,16 @@ package cmap
 import (
 	"hash/maphash"
 	"sync"
+	"sync/atomic"
+
+	"golang.org/x/sys/cpu"
 )
 
 type Bucket[K comparable, V any] struct {
 	sync.RWMutex
 	Map map[K]V
+
+	_ cpu.CacheLinePad
 }
 
 type Map[K comparable, V any] struct {
@@ -41,14 +46,37 @@ func (cm *Map[K, V]) Entry(key K) Entry[K, V] {
 }
 
 func (cm *Map[K, V]) ApproxLen() int {
-	lv := 0
-	for i := range len(cm.Buckets) {
-		bucket := &cm.Buckets[i]
-		bucket.RLock()
-		lv += len(bucket.Map)
-		bucket.RUnlock()
+	size := len(cm.Buckets)
+	lv := int64(0)
+	if size > 128 {
+		var wg sync.WaitGroup
+		groupsize := size / 4
+		wg.Add(4)
+
+		for gi := range 4 {
+			go func() {
+				defer wg.Done()
+
+				begin := gi * groupsize
+				end := (gi + 1) * groupsize
+				for i := begin; i < end; i++ {
+					bucket := &cm.Buckets[i]
+					bucket.RLock()
+					atomic.AddInt64(&lv, int64(len(bucket.Map)))
+					bucket.RUnlock()
+				}
+			}()
+		}
+		wg.Wait()
+	} else {
+		for i := range size {
+			bucket := &cm.Buckets[i]
+			bucket.RLock()
+			lv += int64(len(bucket.Map))
+			bucket.RUnlock()
+		}
 	}
-	return lv
+	return int(lv)
 }
 
 type Entry[K comparable, V any] struct {
@@ -68,6 +96,11 @@ func (e *Entry[K, V]) Get() (V, bool) {
 func (m *Map[K, V]) Get(key K) (V, bool) {
 	entry := m.Entry(key)
 	return entry.Get()
+}
+
+func (m *Map[K, V]) Contains(key K) bool {
+	_, ok := m.Get(key)
+	return ok
 }
 
 func (e *Entry[K, V]) GetOrCompute(constructor func() (V, error)) (V, bool, error) {

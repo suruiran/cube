@@ -10,6 +10,7 @@ import (
 	"github.com/gofrs/flock"
 )
 
+// LockFile for multi process safe
 type LockFile struct {
 	mu     sync.Mutex
 	file   *os.File

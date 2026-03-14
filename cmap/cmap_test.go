@@ -12,6 +12,16 @@ const (
 	bucketCount = 64
 )
 
+func TestMapApproxLen(t *testing.T) {
+	cm := New[string, string](bucketCount)
+	for i := range keyCount {
+		cm.Set(fmt.Sprintf("key_%d", i), fmt.Sprintf("value_%d", i))
+	}
+	if cm.ApproxLen() != keyCount {
+		t.Errorf("ApproxLen() = %d; want %d", cm.ApproxLen(), keyCount)
+	}
+}
+
 func BenchmarkMapComparison(b *testing.B) {
 	keys := make([]string, keyCount)
 	for i := range keyCount {

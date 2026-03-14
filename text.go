@@ -6,7 +6,7 @@ import (
 )
 
 type ITextUnmarshaler interface {
-	UnmarshalText(text string, dest any) error
+	UnmarshalText(text string) error
 }
 
 type ITextMarshaler interface {
@@ -15,7 +15,7 @@ type ITextMarshaler interface {
 
 func UnmarshalText(text string, ptr any) error {
 	if u, ok := ptr.(ITextUnmarshaler); ok {
-		return u.UnmarshalText(text, ptr)
+		return u.UnmarshalText(text)
 	}
 
 	if _sptr, ok := ptr.(*string); ok {

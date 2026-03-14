@@ -14,10 +14,10 @@ type _Seq[K comparable] struct {
 	key    K
 	square *SeqSquare[K]
 
-	mutex    sync.Mutex
-	locked   bool
-	waiters  []*_Waiter
-	notinmap bool
+	mutex   sync.Mutex
+	locked  bool
+	waiters []*_Waiter
+	isout   bool
 }
 
 type _Waiter struct {
@@ -97,7 +97,7 @@ func (sl *SeqSquare[K]) tryclean() {
 				continue
 			}
 			sl.items.Delete(item.key)
-			item.notinmap = true
+			item.isout = true
 			item.mutex.Unlock()
 		}
 	}
@@ -105,7 +105,8 @@ func (sl *SeqSquare[K]) tryclean() {
 }
 
 type SeqSquareOptions struct {
-	// MaxKeys maximum number of keys, default 1024. It should be greater than your expected.
+	// MaxKeys maximum number of keys, default 1024.
+	// It should be a bit larger than your expected maximum, since the internal count is not precise.
 	MaxKeys       int64
 	MaxWaiters    int
 	CleanInterval time.Duration
@@ -180,7 +181,11 @@ func (sl *SeqSquare[K]) Acquire(ctx context.Context, key K) (IUnlocker, error) {
 				if sl.maxkeys > 0 && sl.items.ApproxLen() >= int(sl.maxkeys) {
 					return nil, ErrSeqSquareKeysFull
 				}
-				return &_Seq[K]{square: sl, key: key}, nil
+				return &_Seq[K]{
+					square:  sl,
+					key:     key,
+					waiters: make([]*_Waiter, 0, max(sl.maxwaiters, 8)),
+				}, nil
 			},
 		)
 		if err != nil {
@@ -188,7 +193,7 @@ func (sl *SeqSquare[K]) Acquire(ctx context.Context, key K) (IUnlocker, error) {
 		}
 
 		seq.mutex.Lock()
-		if seq.notinmap {
+		if seq.isout {
 			seq.mutex.Unlock()
 			if err := ctx.Err(); err != nil {
 				return nil, err
@@ -209,7 +214,7 @@ func (sl *SeqSquare[K]) Acquire(ctx context.Context, key K) (IUnlocker, error) {
 		return nil, ErrSeqSquareQueueFull
 	}
 
-	var waiter = &_Waiter{ch: make(chan struct{})}
+	var waiter = &_Waiter{ch: make(chan struct{}, 1)}
 	alive := &waiter.alive
 	alive.Store(true)
 	ch := waiter.ch
