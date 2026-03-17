@@ -53,7 +53,7 @@ func NewClient(fp string, spwan func() *exec.Cmd, logger *slog.Logger) *Client {
 }
 
 var (
-	ErrServerIsNotRunning = errors.New("is not running")
+	ErrServerIsNotRunning = errors.New("the uds server is not running")
 )
 
 type _CtkKeyType int
@@ -69,7 +69,7 @@ type ICancelable interface {
 }
 
 // WithCancel
-// the server will not cancel the request when the handle function is done, it's the caller's responsibility.
+// the server will not cancel the request when the handle function is done, it's the client's responsibility.
 func WithCancel(ctx context.Context, cancelable ICancelable) context.Context {
 	return context.WithValue(ctx, _CtkKeyForCancelFunc, cancelable)
 }
