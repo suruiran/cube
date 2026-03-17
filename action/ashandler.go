@@ -195,7 +195,7 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 			}
 			if err := group.adminchecker.Check(req.Context(), remoteaddr, req); err != nil {
 				respw.WriteHeader(http.StatusNotFound)
-				group.logger.Error("RejectedAdminCall.Check", slog.String("remoteaddr", remoteaddr), logx.ErrorWithStacktrace(err, nil))
+				group.logger.Error("RejectedAdminCall.Check", slog.String("remoteaddr", remoteaddr), logx.ErrorWithStacktrace(err, &logx.StacktraceOptions{Skip: 3}))
 				return
 			}
 		}
@@ -225,7 +225,7 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 		}
 
 		senderr(err)
-		logger.Error("ActionHandleFailed", slog.String("name", actionname), logx.ErrorWithStacktrace(err, nil))
+		logger.Error("ActionHandleFailed", slog.String("name", actionname), logx.ErrorWithStacktrace(err, &logx.StacktraceOptions{Skip: 3}))
 	})
 
 	if cfg.Debug {

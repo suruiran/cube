@@ -145,8 +145,8 @@ type IBind interface {
 }
 
 var (
-	iBindFroHttpType   = reflect.TypeFor[IBind]()
-	httpRequestPtrType = reflect.TypeFor[*http.Request]()
+	iBindFroHttpType = reflect.TypeFor[IBind]()
+	httpRequestType  = reflect.TypeFor[http.Request]()
 )
 
 func Api[Input any, Output IHttpOutput](
@@ -155,20 +155,22 @@ func Api[Input any, Output IHttpOutput](
 	fnc func(ctx context.Context, input *Input) (Output, error),
 	opts *ActionOptions,
 ) {
+	name := group.nameof(fnc)
+
 	inputtype := reflect.TypeFor[Input]()
 	outputtype := reflect.TypeFor[Output]()
 	if inputtype.Kind() != reflect.Struct || outputtype.Kind() != reflect.Pointer {
-		panic(fmt.Errorf("action: bad input(should be a struct) or output type(should be a pointer to a struct)"))
+		panic(fmt.Errorf("action: bad input(should be a struct) or output type(should be a pointer to a struct), %s", name))
 	}
 
-	isreq := inputtype.AssignableTo(httpRequestPtrType) && inputtype.Size() == httpRequestPtrType.Size()
+	isreq := inputtype.AssignableTo(httpRequestType) && inputtype.Size() == httpRequestType.Size()
 	isbindable := reflect.PointerTo(inputtype).Implements(iBindFroHttpType)
 
 	outputtype = outputtype.Elem()
 	if outputtype.Kind() != reflect.Struct {
-		panic(fmt.Errorf("action: bad input(should be a struct) or output type(should be a pointer to a struct)"))
+		panic(fmt.Errorf("action: bad input(should be a struct) or output type(should be a pointer to a struct), %s", name))
 	}
-	name := group.nameof(fnc)
+
 	group.addapi(
 		name,
 		func(ctx context.Context, req *http.Request, respw http.ResponseWriter) error {
@@ -184,7 +186,7 @@ func Api[Input any, Output IHttpOutput](
 					}
 				} else {
 					if err := serializer.Deserialize(req, &input); err != nil {
-						return NewHttpError(http.StatusBadRequest, "")
+						return NewHttpError(http.StatusBadRequest, "empty request body")
 					}
 				}
 			}

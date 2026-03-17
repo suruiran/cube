@@ -29,6 +29,9 @@ func ErrorWithStacktrace(e error, opts *StacktraceOptions) slog.Attr {
 			Size: 20,
 		}
 	}
+	if opts.Size < 1 {
+		opts.Size = 20
+	}
 	return slog.Group(
 		"errtrace",
 		slog.String("error", e.Error()),
@@ -42,6 +45,9 @@ func RecoveredWithStacktrace(pv any, opts *StacktraceOptions) slog.Attr {
 			Skip: 2,
 			Size: 20,
 		}
+	}
+	if opts.Size < 1 {
+		opts.Size = 20
 	}
 	var item slog.Attr
 	if ev, ok := pv.(error); ok {

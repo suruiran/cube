@@ -24,6 +24,13 @@ func (she *_SimpleHttpError) Error() string {
 	return fmt.Sprintf(she.fmt, she.args...)
 }
 
+func (she *_SimpleHttpError) String() string {
+	if she.fmt != "" {
+		return she.Error()
+	}
+	return fmt.Sprintf("<HttpError> %d", she.code)
+}
+
 var _ IHttpError = (*_SimpleHttpError)(nil)
 
 func NewHttpError(code int, fmt string, args ...any) IHttpError {
