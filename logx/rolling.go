@@ -251,7 +251,6 @@ func (s *_SlowWriter) Write(p []byte) (n int, err error) {
 		select {
 		case <-tick.C:
 			{
-
 			}
 		case <-s.ctx.Done():
 			{
@@ -277,34 +276,33 @@ func docompress(ctx context.Context, temp, prevfn string, usesloww bool, limit i
 	if err != nil {
 		return
 	}
+	defer srcf.Close() // nolint:errcheck
 
 	targetfp := filepath.Join(temp, uuid.NewString())
 	tf, err := os.OpenFile(targetfp, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		srcf.Close() //nolint:errcheck
+		_ = srcf.Close()
 		return
 	}
-	defer os.Remove(targetfp) //nolint:errcheck
+	defer func() {
+		_ = tf.Close()
+		_ = os.Remove(targetfp)
+	}()
 
 	bufw := bufio.NewWriter(tf)
 	cw := gzip.NewWriter(bufw)
+	defer cw.Close() // nolint:errcheck
 
 	var w io.Writer = cw
 	if usesloww {
 		w = NewSlowWriter(ctx, cw, limit, time.Second)
 	}
 	if _, err := io.Copy(w, srcf); err != nil {
-		cw.Close()   //nolint:errcheck
-		srcf.Close() //nolint:errcheck
-		tf.Close()   //nolint:errcheck
 		return
 	}
 
-	cw.Close()   //nolint:errcheck
-	bufw.Flush() //nolint:errcheck
-
-	tf.Close()   //nolint:errcheck
-	srcf.Close() //nolint:errcheck
+	_ = bufw.Flush()
+	_ = cw.Close()
 
 	if err := os.Rename(targetfp, fmt.Sprintf("%s.gz", prevfn)); err != nil {
 		fmt.Fprintf(
@@ -313,7 +311,7 @@ func docompress(ctx context.Context, temp, prevfn string, usesloww bool, limit i
 			err,
 		)
 	} else {
-		os.Remove(prevfn) //nolint:errcheck
+		_ = os.Remove(prevfn)
 	}
 }
 
@@ -374,14 +372,13 @@ func (r *RollingFile) nextrollat(now time.Time) int64 {
 }
 
 func (r *RollingFile) prevrollat(now time.Time) int64 {
-	unix := r.nextrollat(now)
 	switch r.kind {
 	case RollingKindDaily:
-		return unix - 86400
+		return time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, now.Location()).Unix()
 	case RollingKindHourly:
-		return unix - 3600
+		return time.Date(now.Year(), now.Month(), now.Day(), now.Hour()-1, 0, 0, 0, now.Location()).Unix()
 	case RollingKindMinutely:
-		return unix - 60
+		return now.Truncate(time.Minute).Unix()
 	default:
 		return 0
 	}
@@ -392,29 +389,17 @@ func (r *RollingFile) Write(p []byte) (n int, err error) {
 	nowunix := now.Unix()
 	rollbytime := r.kind != RollingKindSize
 
-	needroll := false
-	if rollbytime {
-		r.lock.RLock()
-		needroll = nowunix >= r.nextRollAt
-		r.lock.RUnlock()
-	}
-
-	if needroll {
-		r.lock.Lock()
-		if nowunix >= r.nextRollAt {
-			if err := r.rollByTime(now); err != nil {
-				r.lock.Unlock()
-				return n, err
-			}
-		}
-		r.lock.Unlock()
-	}
-
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
 	if r.fs == nil {
 		return 0, io.ErrClosedPipe
+	}
+
+	if rollbytime && nowunix >= r.nextRollAt {
+		if err := r.rollByTime(now); err != nil {
+			return n, err
+		}
 	}
 
 	var w io.Writer = r.buf
@@ -626,7 +611,7 @@ func (r *RollingFile) doEnsureBackups(ctx context.Context, count int) {
 	}
 
 	type _FileInfoWithMtime struct {
-		Info  os.FileInfo
+		Info  os.DirEntry
 		Mtime time.Time
 	}
 
@@ -656,10 +641,14 @@ func (r *RollingFile) doEnsureBackups(ctx context.Context, count int) {
 				continue
 			}
 		}
+		iteminfo, err := item.Info()
+		if err != nil {
+			continue
+		}
 
 		files = append(files, _FileInfoWithMtime{
 			Info:  item,
-			Mtime: item.ModTime(),
+			Mtime: iteminfo.ModTime(),
 		})
 	}
 	if len(files) <= count {

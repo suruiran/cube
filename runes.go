@@ -18,13 +18,17 @@ func rune_seq_internal(ctx context.Context, r io.Reader, nocopy bool) iter.Seq2[
 		buf := make([]byte, RuneReadBufferSize)
 		runes := make([]rune, 0, RuneReadBufferSize)
 		swap := make([]byte, 0, utf8.UTFMax)
+		loopc := 0
 
 		for {
-			select {
-			case <-ctx.Done():
-				yield(nil, ctx.Err())
-				return
-			default:
+			loopc++
+			if loopc&0xF == 0 {
+				select {
+				case <-ctx.Done():
+					yield(nil, ctx.Err())
+					return
+				default:
+				}
 			}
 
 			copy(buf, swap)
@@ -35,19 +39,14 @@ func rune_seq_internal(ctx context.Context, r io.Reader, nocopy bool) iter.Seq2[
 				bufsize := n + swaplen
 				runes = runes[:0]
 				for i := 0; i < bufsize; {
-					remainsize := bufsize - i
 					char, size := utf8.DecodeRune(buf[i:bufsize])
 					if char == utf8.RuneError && size == 1 {
-						if remainsize < utf8.UTFMax {
+						if !utf8.FullRune(buf[i:bufsize]) {
 							swap = append(swap, buf[i:bufsize]...)
 							break
 						}
 						yield(nil, ErrInvalidUTF8)
 						return
-					}
-					if remainsize < size {
-						swap = append(swap, buf[i:bufsize]...)
-						break
 					}
 					runes = append(runes, char)
 					i += size
@@ -87,4 +86,38 @@ func RuneSeq(ctx context.Context, r io.Reader) iter.Seq2[[]rune, error] {
 
 func RuneSeqNoCopy(ctx context.Context, r io.Reader) iter.Seq2[[]rune, error] {
 	return rune_seq_internal(ctx, r, true)
+}
+
+func SkipBOM(input iter.Seq2[[]rune, error]) iter.Seq2[[]rune, error] {
+	return func(yield func([]rune, error) bool) {
+		fc := false
+		for chars, err := range input {
+			if !fc {
+				if err != nil {
+					yield(nil, err)
+					return
+				}
+				if len(chars) < 1 {
+					continue
+				}
+				if chars[0] == 0xFEFF {
+					fc = true
+					if len(chars) > 1 {
+						if !(yield(chars[1:], nil)) {
+							return
+						}
+					}
+				} else {
+					fc = true
+					if !(yield(chars, nil)) {
+						return
+					}
+				}
+				continue
+			}
+			if !yield(chars, err) {
+				return
+			}
+		}
+	}
 }

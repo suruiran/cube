@@ -15,7 +15,7 @@ func env[T any](key string) (T, error) {
 		return t, fmt.Errorf("cube.env: `%s` is empty", key)
 	}
 	if err := UnmarshalText(value, &t); err != nil {
-		return t, err
+		return t, fmt.Errorf("cube.env: `%s` unmarshal failed: %w", key, err)
 	}
 	return t, nil
 }

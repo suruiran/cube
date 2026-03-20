@@ -47,9 +47,7 @@ func NewServerWithLogger(fp string, mux *http.ServeMux, log *slog.Logger) (*Serv
 	}
 	writepid(fp)
 
-	cube.OnDeath(func(wg *sync.WaitGroup) {
-		CleanFiles(fp)
-	})
+	cube.OnDeath(func() { CleanFiles(fp) })
 
 	if log == nil {
 		if cube.Env("CUBE_UDS_LOG_DEFAULT", false) {

@@ -47,7 +47,7 @@ func streaminternal[T any](
 }
 
 // Stream
-// the yielded ptr reused for each row, you can not store it.
+// the yielded ptr reused for each row, caller can not store it.
 func Stream[T any](ctx context.Context, stmt *Stmt, rows *sql.Rows) iter.Seq2[*T, error] {
 	var val T
 	ptr := &val

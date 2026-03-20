@@ -11,7 +11,7 @@ import (
 
 var (
 	deathlock    sync.Mutex
-	deathfncs    []func(wg *sync.WaitGroup)
+	deathfncs    []func()
 	deathsigchan chan os.Signal
 
 	deathing atomic.Bool
@@ -28,7 +28,7 @@ func IsDeathing() bool {
 	return deathing.Load()
 }
 
-func OnDeath(fn func(wg *sync.WaitGroup)) {
+func OnDeath(fn func()) {
 	deathlock.Lock()
 	defer deathlock.Unlock()
 	deathfncs = append(deathfncs, fn)
@@ -40,14 +40,18 @@ func ExecAllDeathHooks() {
 	}
 
 	deathlock.Lock()
-	var tmps = make([]func(wg *sync.WaitGroup), 0, len(deathfncs))
+	var tmps = make([]func(), 0, len(deathfncs))
 	tmps = append(tmps, deathfncs...)
 	deathfncs = deathfncs[:0]
 	deathlock.Unlock()
 
 	wg := &sync.WaitGroup{}
+	wg.Add(len(tmps))
 	for _, fn := range tmps {
-		fn(wg)
+		Fly(func() {
+			defer wg.Done()
+			fn()
+		})
 	}
 
 	Fly(func() {

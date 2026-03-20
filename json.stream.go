@@ -58,6 +58,7 @@ func JsonStreamZeroCopy(fp string) (iter.Seq2[json.RawMessage, error], error) {
 	if isgzip {
 		gr, gr_init_err := gzip.NewReader(reader)
 		if gr_init_err != nil {
+			cs.Close()
 			return nil, gr_init_err
 		}
 		reader = gr
@@ -67,6 +68,7 @@ func JsonStreamZeroCopy(fp string) (iter.Seq2[json.RawMessage, error], error) {
 	dec := json.NewDecoder(reader)
 	token, token_read_err := dec.Token()
 	if token_read_err != nil {
+		cs.Close()
 		return nil, token_read_err
 	}
 	if token != json.Delim('[') {
@@ -115,9 +117,9 @@ func jsonlStreamZeroCopy(fobj *os.File, isgzip bool, seek0 bool) (iter.Seq2[json
 		}
 	}
 
-	var reader io.Reader = bufio.NewReaderSize(fobj, 1024*1024*4)
+	var reader io.Reader = fobj
 	if isgzip {
-		gr, gziperr := gzip.NewReader(reader)
+		gr, gziperr := gzip.NewReader(bufio.NewReaderSize(fobj, 1024*1024*4))
 		if gziperr != nil {
 			cs.Close()
 			return nil, gziperr

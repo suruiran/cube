@@ -24,11 +24,11 @@ func (nbw *NoBufferedWriter) Write(p []byte) (int, error) {
 	if err != nil {
 		return n, err
 	}
-	if nbw.f != nil {
-		return n, nbw.f.Flush()
-	}
 	if nbw.s != nil {
 		return n, nbw.s.Sync()
+	}
+	if nbw.f != nil {
+		return n, nbw.f.Flush()
 	}
 	return n, nil
 }

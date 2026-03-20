@@ -5,7 +5,7 @@ type LazyBool struct {
 	recovery func(val any) bool
 }
 
-func (tb *LazyBool) Bool() (tv bool) {
+func (tb LazyBool) Bool() (tv bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			if tb.recovery != nil {

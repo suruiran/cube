@@ -48,7 +48,7 @@ func (cm *Map[K, V]) Entry(key K) Entry[K, V] {
 func (cm *Map[K, V]) ApproxLen() int {
 	size := len(cm.Buckets)
 	lv := int64(0)
-	if size > 128 {
+	if size > 256 {
 		var wg sync.WaitGroup
 		groupsize := size / 4
 		wg.Add(4)
@@ -59,12 +59,16 @@ func (cm *Map[K, V]) ApproxLen() int {
 
 				begin := gi * groupsize
 				end := (gi + 1) * groupsize
+
+				gc := 0
 				for i := begin; i < end; i++ {
 					bucket := &cm.Buckets[i]
 					bucket.RLock()
-					atomic.AddInt64(&lv, int64(len(bucket.Map)))
+					gc += len(bucket.Map)
 					bucket.RUnlock()
 				}
+
+				atomic.AddInt64(&lv, int64(gc))
 			}()
 		}
 		wg.Wait()
@@ -84,7 +88,7 @@ type Entry[K comparable, V any] struct {
 	Bucket *Bucket[K, V]
 }
 
-func (e *Entry[K, V]) Get() (V, bool) {
+func (e Entry[K, V]) Get() (V, bool) {
 	bucket := e.Bucket
 
 	bucket.RLock()
@@ -93,17 +97,16 @@ func (e *Entry[K, V]) Get() (V, bool) {
 	return v, ok
 }
 
-func (m *Map[K, V]) Get(key K) (V, bool) {
-	entry := m.Entry(key)
-	return entry.Get()
+func (m Map[K, V]) Get(key K) (V, bool) {
+	return m.Entry(key).Get()
 }
 
-func (m *Map[K, V]) Contains(key K) bool {
+func (m Map[K, V]) Contains(key K) bool {
 	_, ok := m.Get(key)
 	return ok
 }
 
-func (e *Entry[K, V]) GetOrCompute(constructor func() (V, error)) (V, bool, error) {
+func (e Entry[K, V]) GetOrCompute(constructor func() (V, error)) (V, bool, error) {
 	bucket := e.Bucket
 	key := e.Key
 
@@ -132,11 +135,10 @@ func (e *Entry[K, V]) GetOrCompute(constructor func() (V, error)) (V, bool, erro
 }
 
 func (m *Map[K, V]) GetOrCompute(key K, constructor func() (V, error)) (V, bool, error) {
-	entry := m.Entry(key)
-	return entry.GetOrCompute(constructor)
+	return m.Entry(key).GetOrCompute(constructor)
 }
 
-func (e *Entry[K, V]) Set(value V) {
+func (e Entry[K, V]) Set(value V) {
 	bucket := e.Bucket
 
 	bucket.Lock()
@@ -146,11 +148,10 @@ func (e *Entry[K, V]) Set(value V) {
 }
 
 func (m *Map[K, V]) Set(key K, value V) {
-	entry := m.Entry(key)
-	entry.Set(value)
+	m.Entry(key).Set(value)
 }
 
-func (e *Entry[K, V]) Delete() {
+func (e Entry[K, V]) Delete() {
 	bucket := e.Bucket
 
 	bucket.Lock()
@@ -160,6 +161,5 @@ func (e *Entry[K, V]) Delete() {
 }
 
 func (m *Map[K, V]) Delete(key K) {
-	entry := m.Entry(key)
-	entry.Delete()
+	m.Entry(key).Delete()
 }

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/suruiran/cube"
 	"github.com/suruiran/cube/sqlx"
 )
 
@@ -100,7 +101,7 @@ func (i *_Impl) queryAllModels(ctx context.Context) ([]_ModelLog, error) {
 		Name string `db:"name" args:"name"`
 	}
 
-	umodels := sqlx.NewUniqueSlice(func(t *_ModelLog) string { return t.Name })
+	umodels := cube.NewUniqueSlice(func(t *_ModelLog) string { return t.Name })
 	umodels.V = models
 
 	mapop := sqlx.NewMap(queryAllTableStmt.Must(), func(ctx context.Context, t *NameItem) (string, error) { return t.Name, nil })

@@ -39,13 +39,13 @@ func (f *LockFile) Write(p []byte) (int, error) {
 	if f.closed.Load() {
 		return 0, io.ErrClosedPipe
 	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	if err := f.lock.Lock(); err != nil {
 		return 0, err
 	}
 	defer f.lock.Unlock() //nolint:errcheck
-
-	f.mu.Lock()
-	defer f.mu.Unlock()
 
 	return f.file.Write(p)
 }

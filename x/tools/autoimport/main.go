@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -70,7 +71,7 @@ func main() {
 		modname = modname[1 : len(modname)-1]
 	}
 
-	seq, err := cube.FsWalkStream(*scanrootflag, &cube.WalkOptions{
+	seq, err := cube.FsScanStream(context.Background(), *scanrootflag, &cube.WalkOptions{
 		MatchPatterns:  []string{"*.go"},
 		IgnorePatterns: ignores.Items,
 		MaxDepth:       10,
@@ -83,7 +84,7 @@ func main() {
 	var dirs = make(cube.Set[string])
 	for item, err := range seq {
 		if err != nil {
-			panic(err)
+			continue
 		}
 		dirs.Add(item.Dir)
 	}

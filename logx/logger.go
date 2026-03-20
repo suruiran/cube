@@ -61,7 +61,7 @@ func New(opts *Opts) (*slog.Logger, error) {
 				fcf |= os.O_SYNC
 			}
 
-			var fobj io.Writer
+			var fobj io.WriteCloser
 			if opts.MultiProcessSafe {
 				var err error
 				fobj, err = OpenLockFile(opts.Filename, fcf, 0644)
@@ -78,7 +78,7 @@ func New(opts *Opts) (*slog.Logger, error) {
 			if nobuff {
 				lw = NewNoBufferedWriter(fobj)
 			} else {
-				lw = NewAutoSaveWriter(bufio.NewWriterSize(fobj, opts.BufferSize))
+				lw = NewAutoSaveWriter(bufio.NewWriterSize(fobj, opts.BufferSize), fobj.Close)
 			}
 		}
 

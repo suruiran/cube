@@ -1,19 +1,19 @@
 package cube
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"iter"
-	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
-	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
 )
 
-func ReadDirStream(dir string) (iter.Seq2[os.FileInfo, error], error) {
+func ReadDirStream(dir string) (iter.Seq2[os.DirEntry, error], error) {
 	d, err := os.Lstat(dir)
 	if err != nil {
 		return nil, err
@@ -22,7 +22,7 @@ func ReadDirStream(dir string) (iter.Seq2[os.FileInfo, error], error) {
 		return nil, fmt.Errorf("cube.fs.ReadDirStream: %s is not a directory", dir)
 	}
 
-	return func(yield func(os.FileInfo, error) bool) {
+	return func(yield func(os.DirEntry, error) bool) {
 		fh, err := os.Open(dir)
 		if err != nil {
 			yield(nil, err)
@@ -31,7 +31,7 @@ func ReadDirStream(dir string) (iter.Seq2[os.FileInfo, error], error) {
 		defer fh.Close() //nolint:errcheck
 
 		for {
-			files, err := fh.Readdir(100)
+			files, err := fh.ReadDir(100)
 			if err != nil {
 				if err == io.EOF {
 					return
@@ -57,7 +57,6 @@ type WalkOptions struct {
 	IgnorePatterns []string
 	OnlyTestName   bool
 	FollowLink     bool
-	OnSlightError  func(error)
 }
 
 var (
@@ -79,26 +78,23 @@ var (
 	}
 )
 
-func (opts *WalkOptions) match(pattern, filename, filefullpath string) bool {
-	filename = strings.ReplaceAll(filename, "\\", "/")
-	filefullpath = strings.ReplaceAll(filefullpath, "\\", "/")
-
+func (opts *WalkOptions) match(pattern, filename, filefullpath string) (bool, error) {
 	matched, err := doublestar.Match(pattern, filename)
 	if err == nil && matched {
-		return true
+		return true, nil
 	}
 	if opts.OnlyTestName {
-		return false
+		return false, nil
 	}
 	matched, err = doublestar.Match(pattern, filefullpath)
 	if err != nil {
-		opts.OnSlightError(err)
+		return false, err
 	}
-	return matched
+	return matched, nil
 }
 
 type FileInfoWithDir struct {
-	os.FileInfo
+	os.DirEntry
 	Dir string
 }
 
@@ -111,92 +107,121 @@ func (fi *FileInfoWithDir) String() string {
 }
 
 var (
-	errEmptyMatchPatterns = errors.New("cube.fs.WalkStream: empty match patterns")
+	errEmptyMatchPatterns = errors.New("cube.fs.ScanStream: empty match patterns")
 )
 
-func FsWalkStream(root string, opts *WalkOptions) (iter.Seq2[*FileInfoWithDir, error], error) {
+func FsScanStream(ctx context.Context, root string, opts *WalkOptions) (iter.Seq2[*FileInfoWithDir, error], error) {
 	if len(opts.MatchPatterns) < 1 {
 		return nil, errEmptyMatchPatterns
-	}
-	if opts.OnSlightError == nil {
-		opts.OnSlightError = func(err error) {
-			slog.Warn(
-				"cube.fs.WalkStream: slight error",
-				slog.String("root", root), slog.String("error", err.Error()),
-			)
-		}
 	}
 	fullpath, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
 	}
 	var markers = make(Set[string])
+	var ic = 0
 	return func(yield func(*FileInfoWithDir, error) bool) {
-		doWalkStream(fullpath, markers, 0, yield, opts)
+		doWalkStream(ctx, &ic, fullpath, markers, 0, yield, opts)
 	}, nil
 }
 
-func doWalkStream(dir string, markers Set[string], currentDepth int, yield func(*FileInfoWithDir, error) bool, opts *WalkOptions) {
+func doWalkStream(ctx context.Context, icptr *int, dir string, markers Set[string], currentDepth int, yield func(*FileInfoWithDir, error) bool, opts *WalkOptions) bool {
 	if opts.MaxDepth > 0 && currentDepth > opts.MaxDepth {
-		return
+		return true
 	}
 	if _, visited := markers[dir]; visited {
-		return
+		return true
 	}
 	markers[dir] = struct{}{}
 
+	if err := ctx.Err(); err != nil {
+		yield(nil, err)
+		return false
+	}
+
 	seq, err := ReadDirStream(dir)
 	if err != nil {
-		yield(nil, err)
-		return
+		return yield(nil, err)
 	}
+
+	subdirs := make([]string, 0, 10)
+
+	mdir := filepath.ToSlash(dir)
 
 loop:
 	for item, err := range seq {
 		if err != nil {
-			yield(nil, err)
-			return
+			if !yield(nil, err) {
+				return false
+			}
+			continue loop
+		}
+
+		*icptr++
+		if (*icptr)&0x3F == 0 {
+			if err = ctx.Err(); err != nil {
+				yield(nil, err)
+				return false
+			}
 		}
 
 		filename := item.Name()
 		fullpath := filepath.Join(dir, filename)
+		mfp := path.Join(mdir, filename)
+
 		for _, ip := range opts.IgnorePatterns {
-			if opts.match(ip, filename, fullpath) {
+			matched, err := opts.match(ip, filename, mfp)
+			if err != nil && !yield(nil, fmt.Errorf("cube.fs.ScanStream: match error: %s, %s, %w", ip, mfp, err)) {
+				return false
+			}
+			if matched {
 				continue loop
 			}
 		}
 
 	matchloop:
 		for _, mp := range opts.MatchPatterns {
-			if opts.match(mp, filename, fullpath) {
-				if !yield(&FileInfoWithDir{FileInfo: item, Dir: dir}, nil) {
-					return
+			matched, err := opts.match(mp, filename, mfp)
+			if err != nil && !yield(nil, fmt.Errorf("cube.fs.ScanStream: match error: %s, %s, %w", mp, mfp, err)) {
+				return false
+			}
+			if matched {
+				if !yield(&FileInfoWithDir{DirEntry: item, Dir: dir}, nil) {
+					return false
 				}
 				break matchloop
 			}
 		}
 
-		if opts.FollowLink && item.Mode()&os.ModeSymlink != 0 {
-			var rlerr error
-			var realpath string
-			if realpath, rlerr = os.Readlink(fullpath); rlerr == nil {
-				if !filepath.IsAbs(realpath) {
-					realpath = filepath.Join(dir, realpath)
-				}
-				var linkstat os.FileInfo
-				if linkstat, rlerr = os.Stat(realpath); rlerr == nil && linkstat.IsDir() {
-					doWalkStream(realpath, markers, currentDepth+1, yield, opts)
-				}
-			}
-			if rlerr != nil {
-				opts.OnSlightError(rlerr)
-			}
+		if item.IsDir() {
+			subdirs = append(subdirs, fullpath)
 			continue
 		}
 
-		if item.IsDir() {
-			doWalkStream(fullpath, markers, currentDepth+1, yield, opts)
+		if opts.FollowLink {
+			if item.Type()&os.ModeSymlink == 0 {
+				continue
+			}
+
+			var rlerr error
+			var realpath string
+			if realpath, rlerr = filepath.EvalSymlinks(fullpath); rlerr == nil {
+				var linkstat os.FileInfo
+				if linkstat, rlerr = os.Stat(realpath); rlerr == nil && linkstat.IsDir() {
+					subdirs = append(subdirs, realpath)
+				}
+			}
+			if rlerr != nil && !yield(nil, rlerr) {
+				return false
+			}
 			continue
 		}
 	}
+
+	for _, subdir := range subdirs {
+		if !doWalkStream(ctx, icptr, subdir, markers, currentDepth+1, yield, opts) {
+			return false
+		}
+	}
+	return true
 }

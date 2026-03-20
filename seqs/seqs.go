@@ -1,7 +1,6 @@
 package seqs
 
 import (
-	"context"
 	"iter"
 
 	"github.com/suruiran/cube/logic"
@@ -16,23 +15,16 @@ const (
 )
 
 func Pipe[T any, V any](
-	ctx context.Context,
 	input iter.Seq[T],
-	ops ...func(ctx context.Context, ele any) (any, Kind),
+	ops ...func(ele any) (any, Kind),
 ) iter.Seq[V] {
 	return func(yield func(V) bool) {
 	loop:
 		for ele := range input {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
 			var av any = ele
 			for _, op := range ops {
 				var kind Kind
-				av, kind = op(ctx, av)
+				av, kind = op(av)
 				if kind == Stop {
 					return
 				}
@@ -47,24 +39,24 @@ func Pipe[T any, V any](
 	}
 }
 
-func Op[I any, O any](op func(ctx context.Context, ele I) (O, Kind)) func(context.Context, any) (any, Kind) {
-	return func(ctx context.Context, ele any) (any, Kind) {
-		ov, kind := op(ctx, any(ele).(I))
+func Op[I any, O any](op func(ele I) (O, Kind)) func(any) (any, Kind) {
+	return func(ele any) (any, Kind) {
+		ov, kind := op(any(ele).(I))
 		return any(ov), kind
 	}
 }
 
-func Filter[T any](op func(ctx context.Context, ele T) bool) func(context.Context, any) (any, Kind) {
-	return Op(func(ctx context.Context, ele T) (T, Kind) {
-		if op(ctx, ele) {
+func Filter[T any](op func(ele T) bool) func(any) (any, Kind) {
+	return Op(func(ele T) (T, Kind) {
+		if op(ele) {
 			return ele, Ok
 		}
 		return ele, Skip
 	})
 }
 
-func FilterByValue[T any]() func(context.Context, any) (any, Kind) {
-	return Op(func(ctx context.Context, ele T) (T, Kind) {
+func FilterByValue[T any]() func(any) (any, Kind) {
+	return Op(func(ele T) (T, Kind) {
 		if logic.All(ele) {
 			return ele, Ok
 		}
@@ -73,24 +65,17 @@ func FilterByValue[T any]() func(context.Context, any) (any, Kind) {
 }
 
 func PipePair[K any, V any, OK any, OV any](
-	ctx context.Context,
 	input iter.Seq2[K, V],
-	ops ...func(ctx context.Context, k any, v any) (any, any, Kind),
+	ops ...func(k any, v any) (any, any, Kind),
 ) iter.Seq2[OK, OV] {
 	return func(yield func(OK, OV) bool) {
 	loop:
 		for k, v := range input {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
 			var ak any = k
 			var av any = v
 			for _, op := range ops {
 				var kind Kind
-				ak, av, kind = op(ctx, ak, av)
+				ak, av, kind = op(ak, av)
 				if kind == Stop {
 					return
 				}
@@ -105,9 +90,9 @@ func PipePair[K any, V any, OK any, OV any](
 	}
 }
 
-func OpPair[IK any, IV any, OK any, OV any](op func(ctx context.Context, k IK, v IV) (OK, OV, Kind)) func(context.Context, any, any) (any, any, Kind) {
-	return func(ctx context.Context, k any, v any) (any, any, Kind) {
-		oK, oV, kind := op(ctx, any(k).(IK), any(v).(IV))
+func OpPair[IK any, IV any, OK any, OV any](op func(k IK, v IV) (OK, OV, Kind)) func(any, any) (any, any, Kind) {
+	return func(k any, v any) (any, any, Kind) {
+		oK, oV, kind := op(any(k).(IK), any(v).(IV))
 		return any(oK), any(oV), kind
 	}
 }

@@ -1,6 +1,7 @@
 package cube
 
 import (
+	"encoding"
 	"reflect"
 	"strconv"
 )
@@ -10,10 +11,14 @@ type ITextUnmarshaler interface {
 }
 
 type ITextMarshaler interface {
-	MarshalText(val any) (string, error)
+	MarshalText() (string, error)
 }
 
 func UnmarshalText(text string, ptr any) error {
+	if u, ok := ptr.(encoding.TextUnmarshaler); ok {
+		return u.UnmarshalText([]byte(text))
+	}
+
 	if u, ok := ptr.(ITextUnmarshaler); ok {
 		return u.UnmarshalText(text)
 	}
@@ -25,10 +30,6 @@ func UnmarshalText(text string, ptr any) error {
 
 	vv := reflect.ValueOf(ptr).Elem()
 	switch vv.Kind() {
-	case reflect.String:
-		{
-			vv.SetString(text)
-		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		{
 			iv, err := strconv.ParseInt(text, 10, 64)
@@ -70,8 +71,16 @@ func UnmarshalText(text string, ptr any) error {
 }
 
 func MarshalText(val any) (string, error) {
+	if m, ok := val.(encoding.TextMarshaler); ok {
+		bv, err := m.MarshalText()
+		if err != nil {
+			return "", err
+		}
+		return string(bv), nil
+	}
+
 	if m, ok := val.(ITextMarshaler); ok {
-		return m.MarshalText(val)
+		return m.MarshalText()
 	}
 
 	switch v := val.(type) {
@@ -81,9 +90,6 @@ func MarshalText(val any) (string, error) {
 		}
 	case *string:
 		{
-			if v == nil {
-				return "", nil
-			}
 			return *v, nil
 		}
 	}
@@ -94,10 +100,6 @@ func MarshalText(val any) (string, error) {
 	}
 
 	switch vv.Kind() {
-	case reflect.String:
-		{
-			return vv.String(), nil
-		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		{
 			return strconv.FormatInt(vv.Int(), 10), nil
@@ -108,7 +110,7 @@ func MarshalText(val any) (string, error) {
 		}
 	case reflect.Float32, reflect.Float64:
 		{
-			return strconv.FormatFloat(vv.Float(), 'f', -1, 64), nil
+			return strconv.FormatFloat(vv.Float(), 'g', -1, 64), nil
 		}
 	case reflect.Bool:
 		{

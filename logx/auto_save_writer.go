@@ -3,7 +3,6 @@ package logx
 import (
 	"errors"
 	"io"
-	"sync"
 	"sync/atomic"
 
 	"github.com/suruiran/cube"
@@ -14,9 +13,10 @@ type Flusher interface {
 }
 
 type AutoSaveWriter struct {
-	w io.Writer
-	c io.Closer
-	f Flusher
+	w      io.Writer
+	c      io.Closer
+	f      Flusher
+	closes []func() error
 
 	closed atomic.Bool
 }
@@ -40,6 +40,16 @@ func (afw *AutoSaveWriter) Close() error {
 			}
 		}
 	}
+
+	for _, fn := range afw.closes {
+		if ce := fn(); ce != nil {
+			if err == nil {
+				err = ce
+			} else {
+				err = errors.Join(err, ce)
+			}
+		}
+	}
 	return err
 }
 
@@ -52,8 +62,8 @@ func (afw *AutoSaveWriter) Write(p []byte) (n int, err error) {
 	return afw.w.Write(p)
 }
 
-func NewAutoSaveWriter(w io.Writer) *AutoSaveWriter {
-	afw := &AutoSaveWriter{w: w}
+func NewAutoSaveWriter(w io.Writer, closes ...func() error) *AutoSaveWriter {
+	afw := &AutoSaveWriter{w: w, closes: closes}
 	cobj, ok := w.(io.Closer)
 	if ok {
 		afw.c = cobj
@@ -62,9 +72,7 @@ func NewAutoSaveWriter(w io.Writer) *AutoSaveWriter {
 	if ok {
 		afw.f = fobj
 	}
-	cube.OnDeath(func(wg *sync.WaitGroup) {
-		wg.Add(1)
-		defer wg.Done()
+	cube.OnDeath(func() {
 		_ = afw.Close()
 	})
 	return afw
