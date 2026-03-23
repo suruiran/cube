@@ -90,6 +90,11 @@ func (group *ActionGroup) WithConfig(cfg *Config) *ActionGroup {
 	return group
 }
 
+func (group *ActionGroup) WithAdminChecker(adminchecker IAdminChecker) *ActionGroup {
+	group.adminchecker = adminchecker
+	return group
+}
+
 func (group *ActionGroup) WithRemoteIpProvider(remoteipprovider IRemoteIPProvider) *ActionGroup {
 	group.remoteipprovider = remoteipprovider
 	return group
