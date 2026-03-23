@@ -41,14 +41,14 @@ func (ac *_FsAdminChecker) Do(ctx context.Context, cli *http.Client, req *http.R
 }
 
 var (
-	filenameRegexp = regexp.MustCompile(`^[a-z]{12}$`)
+	filenameRegexp = regexp.MustCompile(`^[a-z0-9]{12}$`)
 )
 
 func (ac *_FsAdminChecker) make(req *http.Request) (func(), error) {
 	filename := ""
 	fullpath := ""
 	for {
-		filename = string(cube.RandChoices(cube.AsciiChars, 12))
+		filename = string(cube.RandChoices(cube.LowerAsciiChars, 12))
 		fullpath = filepath.Join(ac.fsdir, filename)
 		if _, err := os.Stat(fullpath); os.IsNotExist(err) {
 			break
@@ -79,9 +79,9 @@ func (ac *_FsAdminChecker) make(req *http.Request) (func(), error) {
 	req.Header.Set(
 		ac.header,
 		fmt.Sprintf("%s:%s:%s",
-			base64.StdEncoding.EncodeToString(fnhash.Sum(nil)),
+			base64.RawURLEncoding.EncodeToString(fnhash.Sum(nil)),
 			filename,
-			base64.StdEncoding.EncodeToString(fchash.Sum(nil)),
+			base64.RawURLEncoding.EncodeToString(fchash.Sum(nil)),
 		),
 	)
 
@@ -122,7 +122,7 @@ func (ac *_FsAdminChecker) Check(ctx context.Context, ip string, req *http.Reque
 	}
 
 	// check filename hash
-	clifnhvalbytes, err := base64.StdEncoding.DecodeString(clifnhval)
+	clifnhvalbytes, err := base64.RawURLEncoding.DecodeString(clifnhval)
 	if err != nil {
 		return fmt.Errorf("FsAdminChecker: bad filename hash format")
 	}
@@ -132,7 +132,7 @@ func (ac *_FsAdminChecker) Check(ctx context.Context, ip string, req *http.Reque
 	if !equalbytes(fnhash.Sum(nil), clifnhvalbytes) {
 		return fmt.Errorf("FsAdminChecker: filename hash not match")
 	}
-	clifchvalbytes, err := base64.StdEncoding.DecodeString(clifchval)
+	clifchvalbytes, err := base64.RawURLEncoding.DecodeString(clifchval)
 	if err != nil {
 		return fmt.Errorf("FsAdminChecker: bad file content hash format")
 	}
