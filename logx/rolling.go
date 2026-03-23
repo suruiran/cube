@@ -455,9 +455,19 @@ type RollingOptions struct {
 var (
 	ErrInvalidRollingSize     = errors.New("rrscpkgs.logx: rolling size must be greater than 0")
 	ErrInvalidCompressWorkers = errors.New("rrscpkgs.logx: compress workers must be greater than 0")
+	ErrNilRollingOptions      = errors.New("rrscpkgs.logx: rolling options is nil")
 )
 
 func NewRollingFile(fp string, opts *RollingOptions) (*RollingFile, error) {
+	if opts == nil {
+		return nil, ErrNilRollingOptions
+	}
+	if opts.OpenFile == nil {
+		opts.OpenFile = func(s string, i int, fm os.FileMode) (IFile, error) {
+			return os.OpenFile(s, i, fm)
+		}
+	}
+
 	if opts.Kind == RollingKindNone {
 		return nil, ErrInvalidRollingKind
 	}
