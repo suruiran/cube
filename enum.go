@@ -34,13 +34,10 @@ func AllIntEnums[T IEnum](min T, max T, regexps ...*regexp.Regexp) []T {
 		reg = enumStringRegex
 	}
 
-	items := make([]T, 0, max-min+1)
+	items := make([]T, 0, 16)
 	for i := min; i <= max; {
 		if reg.MatchString(i.String()) {
 			items = append(items, i)
-		}
-		if i == max {
-			break
 		}
 		i++
 	}
