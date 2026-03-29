@@ -5,18 +5,19 @@ import (
 	"errors"
 	"io"
 	"iter"
+	"runtime"
+	"strings"
 	"unicode/utf8"
 )
 
 var (
-	RuneReadBufferSize = 1024
-	ErrInvalidUTF8     = errors.New("invalid UTF-8 encoding")
+	ErrInvalidUTF8 = errors.New("invalid UTF-8 encoding")
 )
 
-func rune_seq_internal(ctx context.Context, r io.Reader, nocopy bool) iter.Seq2[[]rune, error] {
+func rune_seq_internal(ctx context.Context, r io.Reader, nocopy bool, bufsize int) iter.Seq2[[]rune, error] {
 	return func(yield func([]rune, error) bool) {
-		buf := make([]byte, RuneReadBufferSize)
-		runes := make([]rune, 0, RuneReadBufferSize)
+		buf := make([]byte, bufsize)
+		runes := make([]rune, 0, bufsize)
 		swap := make([]byte, 0, utf8.UTFMax)
 		loopc := 0
 
@@ -34,6 +35,16 @@ func rune_seq_internal(ctx context.Context, r io.Reader, nocopy bool) iter.Seq2[
 			copy(buf, swap)
 			swaplen := len(swap)
 			n, err := r.Read(buf[swaplen:])
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					if len(swap) > 0 {
+						yield(nil, io.ErrUnexpectedEOF)
+						return
+					}
+				}
+				yield(nil, err)
+				return
+			}
 			if n > 0 {
 				swap = swap[:0]
 				bufsize := n + swaplen
@@ -65,27 +76,19 @@ func rune_seq_internal(ctx context.Context, r io.Reader, nocopy bool) iter.Seq2[
 						}
 					}
 				}
-			}
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					if len(swap) > 0 {
-						yield(nil, io.ErrUnexpectedEOF)
-						return
-					}
-				}
-				yield(nil, err)
-				return
+			} else {
+				runtime.Gosched()
 			}
 		}
 	}
 }
 
-func RuneSeq(ctx context.Context, r io.Reader) iter.Seq2[[]rune, error] {
-	return rune_seq_internal(ctx, r, false)
+func RuneSeq(ctx context.Context, r io.Reader, bufsize int) iter.Seq2[[]rune, error] {
+	return rune_seq_internal(ctx, r, false, bufsize)
 }
 
-func RuneSeqNoCopy(ctx context.Context, r io.Reader) iter.Seq2[[]rune, error] {
-	return rune_seq_internal(ctx, r, true)
+func RuneSeqNoCopy(ctx context.Context, r io.Reader, bufsize int) iter.Seq2[[]rune, error] {
+	return rune_seq_internal(ctx, r, true, bufsize)
 }
 
 func SkipBOM(input iter.Seq2[[]rune, error]) iter.Seq2[[]rune, error] {
@@ -120,4 +123,22 @@ func SkipBOM(input iter.Seq2[[]rune, error]) iter.Seq2[[]rune, error] {
 			}
 		}
 	}
+}
+
+func HeadRunes(txt string, size int) (string, error) {
+	buf := make([]rune, 0, size)
+	for rs, err := range RuneSeqNoCopy(context.Background(), strings.NewReader(txt), size) {
+		if err != nil {
+			return "", err
+		}
+		remain := size - len(buf)
+		if len(rs) > remain {
+			rs = rs[:remain]
+		}
+		buf = append(buf, rs...)
+		if len(buf) >= size {
+			break
+		}
+	}
+	return string(buf), nil
 }

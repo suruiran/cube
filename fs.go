@@ -225,3 +225,12 @@ loop:
 	}
 	return true
 }
+
+func ReadAnyFile(dir string, fns ...string) ([]byte, error) {
+	for _, fn := range fns {
+		if fbs, err := os.ReadFile(filepath.Join(dir, fn)); err == nil {
+			return fbs, nil
+		}
+	}
+	return nil, fmt.Errorf("cube.fs.ReadAnyFile: no file exists")
+}

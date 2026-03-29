@@ -13,7 +13,7 @@ func TestRuneSeq(t *testing.T) {
 	fmt.Println(len(val), len([]byte(val)), len([]rune(val)))
 
 	r := strings.NewReader(val)
-	seq := RuneSeq(t.Context(), r)
+	seq := RuneSeq(t.Context(), r, 512)
 
 	for runes, err := range seq {
 		if err != nil {
