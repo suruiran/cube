@@ -23,3 +23,11 @@ func (s Set[T]) Clear() Set[T] {
 	clear(s)
 	return s
 }
+
+func (s Set[T]) AsSlice() []T {
+	sli := make([]T, 0, len(s))
+	for v := range s {
+		sli = append(sli, v)
+	}
+	return sli
+}
