@@ -97,7 +97,7 @@ func OpPair[IK any, IV any, OK any, OV any](op func(k IK, v IV) (OK, OV, Kind)) 
 	}
 }
 
-func Slice[T any](sv []T) iter.Seq[T] {
+func FromSlice[T any](sv []T) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for _, v := range sv {
 			if !yield(v) {
@@ -107,7 +107,7 @@ func Slice[T any](sv []T) iter.Seq[T] {
 	}
 }
 
-func SliceWithIndex[T any](sv []T) iter.Seq2[int, T] {
+func FromSliceWithIndex[T any](sv []T) iter.Seq2[int, T] {
 	return func(yield func(int, T) bool) {
 		for i, v := range sv {
 			if !yield(i, v) {
@@ -117,7 +117,7 @@ func SliceWithIndex[T any](sv []T) iter.Seq2[int, T] {
 	}
 }
 
-func Map[T comparable, U any](mv map[T]U) iter.Seq2[T, U] {
+func FromMap[T comparable, U any](mv map[T]U) iter.Seq2[T, U] {
 	return func(yield func(T, U) bool) {
 		for k, v := range mv {
 			if !yield(k, v) {
