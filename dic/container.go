@@ -144,6 +144,7 @@ var (
 	ErrContainerAlreadyExecuted = errors.New("cube.dic: container already executed")
 )
 
+// TODO: Allow registering an interface that returns tokens to resolve all dependencies before execution. Remove errTokenNotFound.
 func (dic *Container[T]) Register(fnc any) *Container[T] {
 	if dic.execed {
 		panic(ErrContainerAlreadyExecuted)
