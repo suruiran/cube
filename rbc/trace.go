@@ -13,6 +13,7 @@ type _LogItem struct {
 	deref       atomic.Uint64
 	set         atomic.Uint64
 	constructor atomic.Uint64
+	memclr      atomic.Uint64
 }
 
 var (
@@ -25,13 +26,17 @@ const (
 	_LogItemDeref
 	_LogItemSet
 	_LogItemConstructor
+	_LogItemMemclr
 )
 
 func on_std_reflect_call(typ reflect.Type, cause int) {
 	if !TraceStdReflectCall {
 		return
 	}
-	itemv, _ := stdReflectLogs.LoadOrStore(typ, &_LogItem{})
+	itemv, ok := stdReflectLogs.Load(typ)
+	if !ok {
+		itemv, _ = stdReflectLogs.LoadOrStore(typ, &_LogItem{})
+	}
 	logitem := itemv.(*_LogItem)
 	switch cause {
 	case _LogItemPtrcast:
@@ -50,6 +55,10 @@ func on_std_reflect_call(typ reflect.Type, cause int) {
 		{
 			logitem.constructor.Add(1)
 		}
+	case _LogItemMemclr:
+		{
+			logitem.memclr.Add(1)
+		}
 	}
 }
 
@@ -62,13 +71,13 @@ func PrintStdReflectCallLogs(w io.Writer) {
 		logitem := itemv.(*_LogItem)
 		_, _ = fmt.Fprintf(
 			w,
-			`{"Type":"%s.%s", "Ptrcast":%d, "Deref":%d, "Set":%d, "New":%d}\n`,
-			typ.PkgPath(),
-			typ.Name(),
+			`{"Type":"%s", "Ptrcast":%d, "Deref":%d, "Set":%d, "New":%d, "Memclr":%d}\n`,
+			typ.String(),
 			logitem.ptrcast.Load(),
 			logitem.deref.Load(),
 			logitem.set.Load(),
 			logitem.constructor.Load(),
+			logitem.memclr.Load(),
 		)
 		return true
 	})

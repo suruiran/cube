@@ -121,7 +121,7 @@ func TestGetValueWithAegis(t *testing.T) {
 }
 
 func TestPool(t *testing.T) {
-	_ = WithArena(t.Context(), func(ctx context.Context) error {
+	_ = WithArenaUnsafe(t.Context(), func(ctx context.Context) error {
 		var obj User
 		obj.UpdatedAt = 121
 
@@ -136,7 +136,7 @@ func TestPool(t *testing.T) {
 		return nil
 	})
 
-	_ = WithArena(t.Context(), func(ctx context.Context) error {
+	_ = WithArenaUnsafe(t.Context(), func(ctx context.Context) error {
 		var obj User
 		obj.UpdatedAt = 127
 		fmt.Println(UpdatedAtField.GetValue(unsafe.Pointer(&obj)))

@@ -11,29 +11,26 @@ var (
 	pools sync.Map
 )
 
-//go:linkname _memclr runtime.memclrNoHeapPointers
-func _memclr(ptr unsafe.Pointer, n uintptr)
-
-func memclr(ptr unsafe.Pointer, size uintptr) {
-	_memclr(ptr, size)
-	// if size == 0 {
-	// 	return
-	// }
-	// sh := unsafe.Slice((*byte)(ptr), size)
-	// for i := range sh {
-	// 	sh[i] = 0
-	// }
-}
-
 type _TypedPool struct {
 	*sync.Pool
-	Size  uintptr
-	OnPut func(v any) bool
+	OnPut  func(v any) bool
+	memclr func(ptr unsafe.Pointer)
 }
 
 type _PoolItem struct {
 	anyv any
 	uptr unsafe.Pointer
+}
+
+func mkmemclr(typ reflect.Type) func(ptr unsafe.Pointer) {
+	clrfn, ok := memclrs[typ]
+	if ok {
+		return clrfn
+	}
+	return func(ptr unsafe.Pointer) {
+		on_std_reflect_call(typ, _LogItemMemclr)
+		reflect.NewAt(typ, ptr).Elem().SetZero()
+	}
 }
 
 var (
@@ -44,7 +41,6 @@ func RegisterOnPut[T any](onput func(v any) bool) {
 	onputs[reflect.TypeFor[T]()] = onput
 }
 
-//go:noinline
 func trymkpool(eletype reflect.Type) any {
 	poolv, _ := pools.LoadOrStore(eletype, &_TypedPool{
 		Pool: &sync.Pool{
@@ -65,8 +61,8 @@ func trymkpool(eletype reflect.Type) any {
 				}
 			},
 		},
-		Size:  eletype.Size(),
-		OnPut: onputs[eletype],
+		OnPut:  onputs[eletype],
+		memclr: mkmemclr(eletype),
 	})
 	return poolv
 }
@@ -95,7 +91,7 @@ func with_arena_internal(
 
 func _put(item *_PoolItem, pool *_TypedPool) {
 	if pool.OnPut == nil {
-		memclr(item.uptr, pool.Size)
+		pool.memclr(item.uptr)
 	} else {
 		if !pool.OnPut(item.anyv) {
 			return
@@ -104,9 +100,9 @@ func _put(item *_PoolItem, pool *_TypedPool) {
 	pool.Put(item)
 }
 
-// WithArena
+// WithArenaUnsafe
 // This is concurrency safe, GC safe, but value unsafe.
-func WithArena(ctx context.Context, fnc func(ctx context.Context) error) error {
+func WithArenaUnsafe(ctx context.Context, fnc func(ctx context.Context) error) error {
 	arena := sync.Map{}
 	defer func() {
 		arena.Range(func(itemav, poolav any) bool {
@@ -125,20 +121,20 @@ func WithArena(ctx context.Context, fnc func(ctx context.Context) error) error {
 	)
 }
 
-// WithTempArena
+// WithArena
 // This is concurrency safe, GC safe, and value safe.
-func WithTempArena(ctx context.Context, fnc func(ctx context.Context) error) error {
+func WithArena(ctx context.Context, fnc func(ctx context.Context) error) error {
 	arena := sync.Map{}
 	return with_arena_internal(
 		ctx,
 		fnc,
-		func(item *_PoolItem, pool *_TypedPool) { arena.Store(item, pool) },
+		func(item *_PoolItem, _pool *_TypedPool) { arena.Store(item, 1) },
 	)
 }
 
-// WithLocalArena
+// WithLocalArenaUnsafe
 // This is GC safe, and concurrency unsafe, value unsafe.
-func WithLocalArena(ctx context.Context, fnc func(ctx context.Context) error) error {
+func WithLocalArenaUnsafe(ctx context.Context, fnc func(ctx context.Context) error) error {
 	arena := make(map[*_PoolItem]*_TypedPool, 64)
 	defer func() {
 		for item := range arena {
@@ -155,13 +151,15 @@ func WithLocalArena(ctx context.Context, fnc func(ctx context.Context) error) er
 	)
 }
 
-// WithTempLocalArena
+// WithLocalArena
 // This is GC safe, value safe and concurrency unsafe.
-func WithTempLocalArena(ctx context.Context, fnc func(ctx context.Context) error) error {
-	arena := make(map[*_PoolItem]*_TypedPool, 64)
+func WithLocalArena(ctx context.Context, fnc func(ctx context.Context) error) error {
+	arena := make([]*_PoolItem, 0, 64)
 	return with_arena_internal(
 		ctx,
 		fnc,
-		func(item *_PoolItem, pool *_TypedPool) { arena[item] = pool },
+		func(item *_PoolItem, _pool *_TypedPool) {
+			arena = append(arena, item)
+		},
 	)
 }
