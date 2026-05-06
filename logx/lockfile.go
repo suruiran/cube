@@ -54,14 +54,13 @@ func (f *LockFile) Sync() error {
 	if f.closed.Load() {
 		return io.ErrClosedPipe
 	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
 
 	if err := f.lock.Lock(); err != nil {
 		return err
 	}
 	defer f.lock.Unlock() //nolint:errcheck
-
-	f.mu.Lock()
-	defer f.mu.Unlock()
 
 	return f.file.Sync()
 }

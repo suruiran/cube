@@ -23,10 +23,14 @@ func streaminternal[T any](
 		var tmp = shape.mktmp()
 		initemp(shape, &tmp)
 
+		cc := 0
 		for rows.Next() {
-			if ctx.Err() != nil {
-				yield(nil, ctx.Err())
-				return
+			cc++
+			if cc%10 == 0 {
+				if err := ctx.Err(); err != nil {
+					yield(nil, ctx.Err())
+					return
+				}
 			}
 
 			ptr := filltmp(shape, &tmp)

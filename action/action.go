@@ -129,7 +129,8 @@ func (group *ActionGroup) addapi(name string, fnc ApiAction, opts *ActionOptions
 		panic(fmt.Errorf("action: %s, is already exists", name))
 	}
 	if group.optsfnc != nil {
-		opts = group.optsfnc(opts)
+		tmp := *opts
+		opts = group.optsfnc(&tmp)
 	}
 	group.apiactions[name] = _ActItem{
 		Fnc:  fnc,

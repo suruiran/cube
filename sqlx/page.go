@@ -23,7 +23,15 @@ func pageinternal[T any](ctx context.Context, stmt *Stmt, rows *sql.Rows, page [
 	var tmp = shape.mktmp()
 	size := 0
 
+	cc := 0
 	for rows.Next() {
+		cc++
+		if cc%10 == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, false, err
+			}
+		}
+
 		filltmp(shape, size, &tmp)
 		if err := rows.Scan(tmp...); err != nil {
 			return nil, true, err

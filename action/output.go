@@ -80,10 +80,6 @@ func (p *PlainTextOutput) BytesBody() ([]byte, bool) {
 	return unsafe.Slice(unsafe.StringData(p.Txt), len(p.Txt)), true
 }
 
-func (p *PlainTextOutput) MarshalJSON() ([]byte, error) {
-	return nil, nil
-}
-
 func (p *PlainTextOutput) Code() int {
 	return 200
 }
@@ -93,7 +89,6 @@ func (p *PlainTextOutput) Headers() http.Header {
 }
 
 var _ IHttpOutput = (*PlainTextOutput)(nil)
-var _ json.Marshaler = (*PlainTextOutput)(nil)
 
 type JsonBytesOutput struct {
 	Txt []byte
@@ -103,10 +98,6 @@ func NewJsonBytesOutput[T any](val T) *JsonBytesOutput {
 	return &JsonBytesOutput{
 		Txt: cube.MustMarshalJSON(val),
 	}
-}
-
-func (j *JsonBytesOutput) MarshalJSON() ([]byte, error) {
-	return nil, nil
 }
 
 func (j *JsonBytesOutput) BytesBody() ([]byte, bool) {
@@ -130,4 +121,3 @@ func (j *JsonBytesOutput) Headers() http.Header {
 }
 
 var _ IHttpOutput = (*JsonBytesOutput)(nil)
-var _ json.Marshaler = (*JsonBytesOutput)(nil)

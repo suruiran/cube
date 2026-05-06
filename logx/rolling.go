@@ -185,7 +185,7 @@ func (r *RollingFile) rename(t time.Time) error {
 		}); err != nil {
 			fmt.Fprintf(
 				os.Stderr,
-				"rrscpkgs.rolling: add compress task failed, %s, %s\n",
+				"cube.rolling: add compress task failed, %s, %s\n",
 				filename, err,
 			)
 		}
@@ -307,8 +307,8 @@ func docompress(ctx context.Context, temp, prevfn string, usesloww bool, limit i
 	if err := os.Rename(targetfp, fmt.Sprintf("%s.gz", prevfn)); err != nil {
 		fmt.Fprintf(
 			os.Stderr,
-			"rrscpkgs.rolling: rename compress log failed, %s",
-			err,
+			"cube.rolling: rename compress log failed, %s, temp %s",
+			err, targetfp,
 		)
 	} else {
 		_ = os.Remove(prevfn)
@@ -453,9 +453,8 @@ type RollingOptions struct {
 }
 
 var (
-	ErrInvalidRollingSize     = errors.New("rrscpkgs.logx: rolling size must be greater than 0")
-	ErrInvalidCompressWorkers = errors.New("rrscpkgs.logx: compress workers must be greater than 0")
-	ErrNilRollingOptions      = errors.New("rrscpkgs.logx: rolling options is nil")
+	ErrInvalidRollingSize = errors.New("cube.logx: rolling size must be greater than 0")
+	ErrNilRollingOptions  = errors.New("cube.logx: rolling options is nil")
 )
 
 func NewRollingFile(fp string, opts *RollingOptions) (*RollingFile, error) {
@@ -564,7 +563,7 @@ func NewRollingFile(fp string, opts *RollingOptions) (*RollingFile, error) {
 			}
 			err := os.MkdirAll(slowopts.TempDir, 0o0755)
 			if err != nil {
-				return nil, fmt.Errorf("rrscpkgs.logx.rolling: create compress temp dir failed, %s, %s", dir, err)
+				return nil, fmt.Errorf("cube.logx.rolling: create compress temp dir failed, %s, %w", slowopts.TempDir, err)
 			}
 			rf.slowCompressDir = slowopts.TempDir
 
@@ -573,7 +572,7 @@ func NewRollingFile(fp string, opts *RollingOptions) (*RollingFile, error) {
 				OnPanic: func(ctx context.Context, _ cube.ITaskItem, err any) {
 					fmt.Fprintf(
 						os.Stderr,
-						"rrscpkgs.logx: compress task panic: %s, %v\n",
+						"cube.logx.rolling: compress task panic: %s, %v\n",
 						fp, err,
 					)
 				},
@@ -609,7 +608,7 @@ func (r *RollingFile) doEnsureBackups(ctx context.Context, count int) {
 		if rv := recover(); rv != nil {
 			fmt.Fprintf(
 				os.Stderr,
-				"rrscpkgs.rolling: ensure backups panic, %s, %v\n",
+				"cube.logx.rolling: ensure backups panic, %s, %v\n",
 				r.filepath, rv,
 			)
 		}

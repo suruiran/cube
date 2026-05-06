@@ -31,7 +31,7 @@ func registeronetype[T any]() {
 	}
 }
 
-func RegisterType[T any](tags ...string) {
+func RegisterType[T any]() {
 	typ := reflect.TypeFor[T]()
 	pkgpath := typ.PkgPath()
 
@@ -52,23 +52,8 @@ func RegisterType[T any](tags ...string) {
 			registeronetype[T]()
 		}
 	}
-
-	tags = append(tags, "db", "sql", "args")
-	if typ.Kind() == reflect.Struct {
-
-		switch pkgpath {
-		case "time", "database/sql":
-		default:
-			{
-				typeinfo := InfoFor[T]()
-				for _, tagname := range tags {
-					_ = typeinfo.inittag(tagname)
-				}
-			}
-		}
-	}
 }
 
-func SpellSteal[T any](tags ...string) {
-	RegisterType[T](tags...)
+func SpellSteal[T any]() {
+	RegisterType[T]()
 }

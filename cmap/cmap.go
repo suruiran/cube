@@ -22,8 +22,8 @@ type Map[K comparable, V any] struct {
 }
 
 func New[K comparable, V any](size uint64) *Map[K, V] {
-	if size < 1 || size&(size-1) != 0 {
-		panic("size must be power of 2")
+	if size < 4 || size&(size-1) != 0 {
+		panic("size must be power of 2 and at least 4")
 	}
 
 	obj := &Map[K, V]{

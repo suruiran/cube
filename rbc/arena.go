@@ -37,6 +37,7 @@ var (
 	onputs = map[reflect.Type]func(v any) bool{}
 )
 
+// onput: return true if the item should be put back to the pool
 func RegisterOnPut[T any](onput func(v any) bool) {
 	onputs[reflect.TypeFor[T]()] = onput
 }
@@ -90,13 +91,10 @@ func with_arena_internal(
 }
 
 func _put(item *_PoolItem, pool *_TypedPool) {
-	if pool.OnPut == nil {
-		pool.memclr(item.uptr)
-	} else {
-		if !pool.OnPut(item.anyv) {
-			return
-		}
+	if pool.OnPut != nil && !pool.OnPut(item.anyv) {
+		return
 	}
+	pool.memclr(item.uptr)
 	pool.Put(item)
 }
 

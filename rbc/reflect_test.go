@@ -206,12 +206,23 @@ func BenchmarkGetPtrWithAegis(b *testing.B) {
 	}
 }
 
-func TestRecursive(t *testing.T) {
+func TestAnonymousRecursive(t *testing.T) {
 	fmt.Println(os.Getpid())
 
 	type AAA struct {
 		A1 int64 `db:"a1"`
 		*AAA
+	}
+
+	fmt.Println(InfoFor[AAA]())
+}
+
+func TestExportRecursive(t *testing.T) {
+	fmt.Println(os.Getpid())
+
+	type AAA struct {
+		A1      int64 `db:"a1"`
+		Another *AAA
 	}
 
 	fmt.Println(InfoFor[AAA]())

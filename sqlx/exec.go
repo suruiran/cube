@@ -90,7 +90,7 @@ func PeekExecutor(ctx context.Context) IExecutor {
 
 func TxScope(ctx context.Context, f func(ctx context.Context) error, opts *sql.TxOptions) error {
 	if _tv := ctx.Value(_CtxKeyTx); _tv != nil {
-		return fmt.Errorf("sqlx: already in transaction")
+		return fmt.Errorf("cube.sqlx: already in transaction")
 	}
 	tx, err := MustDB(ctx).BeginTx(ctx, opts)
 	if err != nil {

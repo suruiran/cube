@@ -20,12 +20,13 @@ import (
 )
 
 type _FsAdminChecker struct {
-	secret   []byte
-	fsdir    string
-	header   string
-	filesize int64
-	wtest    sync.Once
-	haswp    bool
+	secret    []byte
+	fsdir     string
+	header    string
+	filesize  int64
+	wtest     sync.Once
+	haswp     bool
+	usedfiles sync.Map
 }
 
 func (ac *_FsAdminChecker) Do(ctx context.Context, cli *http.Client, req *http.Request) (*http.Response, error) {
@@ -97,6 +98,19 @@ func (ac *_FsAdminChecker) Check(ctx context.Context, ip string, req *http.Reque
 		fullpath := filepath.Join(ac.fsdir, ".wtest")
 		fobj, err := os.OpenFile(fullpath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
 		if err != nil {
+			cube.FlyAsSwallow(func() {
+				for {
+					time.Sleep(time.Minute * 2)
+					ac.usedfiles.Range(func(key, value any) bool {
+						fn := key.(string)
+						at := value.(time.Time)
+						if time.Since(at) > time.Minute {
+							ac.usedfiles.Delete(fn)
+						}
+						return true
+					})
+				}
+			})
 			return
 		}
 		defer fobj.Close()  //nolint:errcheck
@@ -139,6 +153,9 @@ func (ac *_FsAdminChecker) Check(ctx context.Context, ip string, req *http.Reque
 
 	// read file
 	fullpath := filepath.Join(ac.fsdir, filename)
+	if _, ok := ac.usedfiles.LoadOrStore(filename, time.Now()); ok {
+		return fmt.Errorf("FsAdminChecker: file %s is used", filename)
+	}
 	fobj, err := os.Open(fullpath)
 	if err != nil {
 		return fmt.Errorf("FsAdminChecker: open file error: %w", err)
