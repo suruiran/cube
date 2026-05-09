@@ -41,7 +41,7 @@ func GetRunningPid(fp string) (int, error) {
 
 func writepid(fp string) {
 	pidfile := fmt.Sprintf("%s.pid", fp)
-	os.WriteFile(pidfile, fmt.Appendf(nil, "%d", os.Getpid()), 0o0644) //nolint:errcheck
+	os.WriteFile(pidfile, fmt.Appendf(nil, "%d", os.Getpid()), 0600) //nolint:errcheck
 }
 
 func CleanFiles(fp string) {

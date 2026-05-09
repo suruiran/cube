@@ -58,13 +58,13 @@ func New(opts *Opts) (*slog.Logger, error) {
 		var fobj io.WriteCloser
 		if opts.MultiProcessSafe {
 			var err error
-			fobj, err = OpenLockFile(opts.Filename, fcf, 0644)
+			fobj, err = OpenLockFile(opts.Filename, fcf, 0600)
 			if err != nil {
 				return nil, err
 			}
 		} else {
 			var err error
-			fobj, err = os.OpenFile(opts.Filename, fcf, 0644)
+			fobj, err = os.OpenFile(opts.Filename, fcf, 0600)
 			if err != nil {
 				return nil, err
 			}

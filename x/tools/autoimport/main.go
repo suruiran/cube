@@ -125,7 +125,7 @@ func main() {
 	)
 	lines = append(lines, ")")
 
-	err = os.WriteFile(*outflag, []byte(strings.Join(lines, "\n")), 0o644)
+	err = os.WriteFile(*outflag, []byte(strings.Join(lines, "\n")), 0600)
 	if err != nil {
 		panic(err)
 	}

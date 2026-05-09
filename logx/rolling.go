@@ -205,7 +205,7 @@ func (r *RollingFile) reopen() error {
 		}
 	}()
 
-	fs, err := r.open(r.filepath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	fs, err := r.open(r.filepath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return err
 	}
@@ -279,7 +279,7 @@ func docompress(ctx context.Context, temp, prevfn string, usesloww bool, limit i
 	defer srcf.Close() // nolint:errcheck
 
 	targetfp := filepath.Join(temp, uuid.NewString())
-	tf, err := os.OpenFile(targetfp, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	tf, err := os.OpenFile(targetfp, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		_ = srcf.Close()
 		return
@@ -488,7 +488,7 @@ func NewRollingFile(fp string, opts *RollingOptions) (*RollingFile, error) {
 	nameSuffix := filepath.Ext(fp)
 	namePrefix := base[:len(base)-len(nameSuffix)]
 
-	fs, err := opts.OpenFile(fp, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	fs, err := opts.OpenFile(fp, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, err
 	}
@@ -561,7 +561,7 @@ func NewRollingFile(fp string, opts *RollingOptions) (*RollingFile, error) {
 			if slowopts.TempDir == "" {
 				slowopts.TempDir = filepath.Join(dir, ".temp")
 			}
-			err := os.MkdirAll(slowopts.TempDir, 0o0755)
+			err := os.MkdirAll(slowopts.TempDir, 0700)
 			if err != nil {
 				return nil, fmt.Errorf("cube.logx.rolling: create compress temp dir failed, %s, %w", slowopts.TempDir, err)
 			}

@@ -227,3 +227,17 @@ func TestExportRecursive(t *testing.T) {
 
 	fmt.Println(InfoFor[AAA]())
 }
+
+func TestMemClr(t *testing.T) {
+	type MClr struct {
+		a int
+	}
+
+	a := MClr{
+		a: 12,
+	}
+
+	MemClr(&a)
+
+	fmt.Println(a)
+}

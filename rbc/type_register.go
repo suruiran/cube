@@ -14,6 +14,10 @@ var (
 	memclrs      = map[reflect.Type]func(unsafe.Pointer){}
 )
 
+func MemClr[T any](ptr *T) {
+	clear(unsafe.Slice(ptr, 1))
+}
+
 func registeronetype[T any]() {
 	typ := reflect.TypeFor[T]()
 	ptrcasts[typ] = func(vv unsafe.Pointer) any { return (*T)(vv) }
@@ -22,8 +26,7 @@ func registeronetype[T any]() {
 		*((*T)(vv)) = fv.(T)
 	}
 	memclrs[typ] = func(vv unsafe.Pointer) {
-		var zero T
-		*((*T)(vv)) = zero
+		clear(unsafe.Slice((*T)(vv), 1))
 	}
 	constructors[typ] = func() (any, unsafe.Pointer) {
 		val := new(T)

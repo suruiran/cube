@@ -56,7 +56,7 @@ func (ac *_FsAdminChecker) make(req *http.Request) (func(), error) {
 		}
 	}
 
-	fobj, err := os.OpenFile(fullpath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
+	fobj, err := os.OpenFile(fullpath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("action.FsAdminChecker: create file error: %w", err)
 	}
@@ -96,7 +96,7 @@ func equalbytes(a, b []byte) bool {
 func (ac *_FsAdminChecker) Check(ctx context.Context, ip string, req *http.Request) error {
 	ac.wtest.Do(func() {
 		fullpath := filepath.Join(ac.fsdir, ".wtest")
-		fobj, err := os.OpenFile(fullpath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
+		fobj, err := os.OpenFile(fullpath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
 		if err != nil {
 			cube.FlyAsSwallow(func() {
 				for {
