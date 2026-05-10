@@ -13,7 +13,7 @@ func npush[T any](eles []T, vs ...T) []T {
 	return append(c, vs...)
 }
 
-func expand(vv reflect.Value, top *TypeInfo, indexes []int) *TypeInfo {
+func expand(parenttype reflect.Type, vv reflect.Value, top *TypeInfo, indexes []int) *TypeInfo {
 	if vv.Kind() != reflect.Struct {
 		panic(fmt.Sprintf("sqlx.expand: T must be a struct, got `%T`", vv.Type()))
 	}
@@ -36,8 +36,12 @@ func expand(vv reflect.Value, top *TypeInfo, indexes []int) *TypeInfo {
 		offset := fieldoffset(top.Type, loc_index)
 
 		ff := &Field{
-			Info:     fv,
-			Index:    loc_index,
+			Info:  fv,
+			Index: loc_index,
+
+			parent: parenttype,
+
+			offset:   offset,
 			ptrcast:  ptrcasts[fv.Type],
 			ptrderef: derefs[fv.Type],
 			set:      sets[fv.Type],
@@ -46,10 +50,12 @@ func expand(vv reflect.Value, top *TypeInfo, indexes []int) *TypeInfo {
 				return unsafe.Add(vv, offset), nil
 			},
 		}
+		ff.metakey = fmt.Sprintf("%p:%s", ff.parent, ff.Info.Name)
 
 		if fv.Anonymous {
 			if fv.Type.Kind() == reflect.Struct {
-				expand(vv.FieldByIndex(fv.Index), top, npush(loc_index))
+				fvv := vv.FieldByIndex(fv.Index)
+				expand(fvv.Type(), fvv, top, npush(loc_index))
 			} else {
 				subinfo := InfoOf(fv.Type.Elem())
 				for _, f := range subinfo.fields {

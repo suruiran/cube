@@ -12,6 +12,10 @@ type Field struct {
 	Info  reflect.StructField
 	Index []int
 
+	parent  reflect.Type
+	metakey string
+
+	offset   uintptr
 	nested   bool
 	ptrcast  func(unsafe.Pointer) any
 	ptrderef func(unsafe.Pointer) any
@@ -19,6 +23,13 @@ type Field struct {
 
 	jump            func(unsafe.Pointer) unsafe.Pointer
 	jump_with_aegis func(context.Context, unsafe.Pointer) (unsafe.Pointer, error)
+}
+
+func (fi *Field) Nested() *TypeInfo {
+	if !fi.nested {
+		panic(fmt.Errorf("cube.rbc: field is not anonymous"))
+	}
+	return InfoOf(fi.Info.Type.Elem())
 }
 
 type FieldWithTag struct {
@@ -83,7 +94,7 @@ var (
 
 func InfoOf(t reflect.Type) *TypeInfo {
 	val, err := typeinfocache.GetOrCompute(t.String(), func() (any, error) {
-		ti := expand(reflect.ValueOf(anchor(t)).Elem(), nil, nil)
+		ti := expand(t, reflect.ValueOf(AnchorOf(t)).Elem(), nil, nil)
 
 		lazyfgslock.Lock()
 		fg, ok := lazyfgs[t]

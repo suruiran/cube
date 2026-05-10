@@ -30,7 +30,7 @@ type B struct {
 
 type C struct {
 	*B
-	C1 int64
+	C1 int64 `db:"c1"`
 }
 
 type User struct {
@@ -88,6 +88,20 @@ func TestUserFields(t *testing.T) {
 	stackobj.UpdatedAt = 122
 
 	fmt.Println(UpdatedAtField.GetValue(unsafe.Pointer(&stackobj)))
+
+	f_created_at := MustFieldFor(func(anchor *User) *int64 { return &anchor.CreatedAt })
+	fmt.Println(f_created_at)
+
+	f_c := MustFieldFor(func(anchor *User) **C { return &anchor.C })
+	fmt.Println(f_c)
+
+	f_c1 := MustFieldFor(func(anchor *C) *int64 { return &anchor.C1 })
+	fmt.Println(f_c1)
+
+	f_c1_via_tag := InfoFor[User]().MustField("db", "c1")
+	fmt.Println(f_c1_via_tag.Field, f_c1_via_tag.Field == f_c1)
+
+	fmt.Println(f_c1_via_tag.Meta() == f_c1.Meta())
 }
 
 func TestGetValueWithAegis(t *testing.T) {
