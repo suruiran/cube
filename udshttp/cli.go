@@ -24,7 +24,7 @@ import (
 
 type Client struct {
 	fp     string
-	spwan  func() *exec.Cmd
+	spwan  func() (*exec.Cmd, error)
 	cli    *http.Client
 	logger *slog.Logger
 }
@@ -36,7 +36,7 @@ func (cli *Client) Logger() *slog.Logger {
 	return cli.logger
 }
 
-func NewClient(fp string, spwan func() *exec.Cmd, logger *slog.Logger) *Client {
+func NewClient(fp string, spwan func() (*exec.Cmd, error), logger *slog.Logger) *Client {
 	return &Client{fp: fp, spwan: spwan,
 		cli: &http.Client{
 			Transport: &http.Transport{
@@ -105,7 +105,10 @@ func spwan(cli *Client) error {
 	}
 	defer lock.Unlock() //nolint:errcheck
 
-	cmd := cli.spwan()
+	cmd, err := cli.spwan()
+	if err != nil {
+		return err
+	}
 	cli.logger.Debug(
 		"spwan server process",
 		slog.String("dir", cmd.Dir),
