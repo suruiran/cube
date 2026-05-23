@@ -48,7 +48,7 @@ func (cm *Map[K, V]) Entry(key K) Entry[K, V] {
 func (cm *Map[K, V]) ApproxLen() int {
 	size := len(cm.Buckets)
 	lv := int64(0)
-	if size > 256 {
+	if size > 1024 {
 		var wg sync.WaitGroup
 		groupsize := size / 4
 		wg.Add(4)
