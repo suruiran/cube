@@ -234,3 +234,11 @@ func ReadAnyFile(dir string, fns ...string) ([]byte, error) {
 	}
 	return nil, fmt.Errorf("cube.fs.ReadAnyFile: no file exists")
 }
+
+func IsDir(v string) bool {
+	stat, err := os.Stat(v)
+	if err != nil {
+		return false
+	}
+	return stat.IsDir()
+}
