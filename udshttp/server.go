@@ -227,7 +227,11 @@ func Register[Input any, Output any](mux *http.ServeMux, logger *slog.Logger, fn
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Accept", "application/json")
-		bs = cube.MustMarshalJSON(output)
+		bs, err = cube.MarshalJSON(output)
+		if err != nil {
+			logger.Error("udshttp marsh json failed", slog.String("path", r.URL.Path), slog.Any("err", err), slog.Any("input", input))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(bs)
 

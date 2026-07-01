@@ -13,7 +13,17 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 )
 
-func ReadDirStream(dir string) (iter.Seq2[os.DirEntry, error], error) {
+type ReadDirStreamOptions struct {
+	BatchSize int
+}
+
+func ReadDirStream(dir string, opts *ReadDirStreamOptions) (iter.Seq2[os.DirEntry, error], error) {
+	if opts == nil {
+		opts = &ReadDirStreamOptions{
+			BatchSize: 100,
+		}
+	}
+
 	d, err := os.Lstat(dir)
 	if err != nil {
 		return nil, err
@@ -31,7 +41,7 @@ func ReadDirStream(dir string) (iter.Seq2[os.DirEntry, error], error) {
 		defer fh.Close() //nolint:errcheck
 
 		for {
-			files, err := fh.ReadDir(100)
+			files, err := fh.ReadDir(opts.BatchSize)
 			if err != nil {
 				if err == io.EOF {
 					return
@@ -139,7 +149,7 @@ func doWalkStream(ctx context.Context, icptr *int, dir string, markers Set[strin
 		return false
 	}
 
-	seq, err := ReadDirStream(dir)
+	seq, err := ReadDirStream(dir, nil)
 	if err != nil {
 		return yield(nil, err)
 	}

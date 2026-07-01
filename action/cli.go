@@ -9,7 +9,11 @@ import (
 )
 
 func NewJsonRequest[T any](ctx context.Context, method string, url string, val T) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(cube.MustMarshalJSON(val)))
+	valbs, err := cube.MarshalJSON(val)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(valbs))
 	if err != nil {
 		return nil, err
 	}

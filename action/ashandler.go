@@ -27,26 +27,30 @@ var (
 	internalErrorMsg = []byte("internal server error")
 )
 
-type _Respw struct {
+type OnceResponseWriter struct {
 	http.ResponseWriter
 	wrote bool
 }
 
-func (rw *_Respw) Header() http.Header {
+func (rw *OnceResponseWriter) Wrote() bool {
+	return rw.wrote
+}
+
+func (rw *OnceResponseWriter) Header() http.Header {
 	return rw.ResponseWriter.Header()
 }
 
-func (rw *_Respw) Write(b []byte) (int, error) {
+func (rw *OnceResponseWriter) Write(b []byte) (int, error) {
 	rw.wrote = true
 	return rw.ResponseWriter.Write(b)
 }
 
-func (rw *_Respw) WriteHeader(statusCode int) {
+func (rw *OnceResponseWriter) WriteHeader(statusCode int) {
 	rw.wrote = true
 	rw.ResponseWriter.WriteHeader(statusCode)
 }
 
-var _ http.ResponseWriter = (*_Respw)(nil)
+var _ http.ResponseWriter = (*OnceResponseWriter)(nil)
 
 func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string) http.Handler {
 	logger := group.logger
@@ -92,7 +96,7 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 
 	handler := http.HandlerFunc(func(respw http.ResponseWriter, req *http.Request) {
 		req.Body = http.MaxBytesReader(respw, req.Body, MaxRequestBodySize)
-		_w := &_Respw{ResponseWriter: respw}
+		_w := &OnceResponseWriter{ResponseWriter: respw}
 		respw = _w
 
 		if req.Method == http.MethodOptions || req.Method == http.MethodConnect || req.Method == http.MethodTrace {

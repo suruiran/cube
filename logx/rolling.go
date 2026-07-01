@@ -37,7 +37,7 @@ func parseRollingKind(text []byte) (RollingKind, error) {
 	if len(text) == 0 {
 		return RollingKindNone, ErrInvalidRollingKind
 	}
-	if text[0] == '"' && text[len(text)-1] == '"' {
+	if text[0] == '"' && len(text) >= 2 && text[len(text)-1] == '"' {
 		text = text[1 : len(text)-1]
 	}
 	if len(text) == 0 {
@@ -115,7 +115,7 @@ type RollingFile struct {
 	nameSuffix string
 
 	calcAt     time.Time
-	nextRollAt int64
+	nextRollAt time.Time
 
 	filesize int64
 
@@ -358,16 +358,16 @@ func (r *RollingFile) Close() error {
 	return saveerr
 }
 
-func (r *RollingFile) nextrollat(now time.Time) int64 {
+func (r *RollingFile) nextrollat(now time.Time) time.Time {
 	switch r.kind {
 	case RollingKindDaily:
-		return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location()).Unix()
+		return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
 	case RollingKindHourly:
-		return time.Date(now.Year(), now.Month(), now.Day(), now.Hour()+1, 0, 0, 0, now.Location()).Unix()
+		return time.Date(now.Year(), now.Month(), now.Day(), now.Hour()+1, 0, 0, 0, now.Location())
 	case RollingKindMinutely:
-		return now.Truncate(time.Minute).Add(time.Minute).Unix()
+		return now.Truncate(time.Minute).Add(time.Minute)
 	default:
-		return 0
+		return time.Time{}
 	}
 }
 
@@ -386,7 +386,6 @@ func (r *RollingFile) prevrollat(now time.Time) int64 {
 
 func (r *RollingFile) Write(p []byte) (n int, err error) {
 	now := time.Now()
-	nowunix := now.Unix()
 	rollbytime := r.kind != RollingKindSize
 
 	r.lock.Lock()
@@ -396,7 +395,7 @@ func (r *RollingFile) Write(p []byte) (n int, err error) {
 		return 0, io.ErrClosedPipe
 	}
 
-	if rollbytime && nowunix >= r.nextRollAt {
+	if rollbytime && now.Sub(r.nextRollAt) >= 0 {
 		if err := r.rollByTime(now); err != nil {
 			return n, err
 		}
@@ -556,7 +555,7 @@ func NewRollingFile(fp string, opts *RollingOptions) (*RollingFile, error) {
 				rf.useSlowCompress = false
 			} else {
 				rf.useSlowCompress = true
-				rf.slowCompressLimit = max(slowopts.BytesPerSecond, 1024*1024*64)
+				rf.slowCompressLimit = max(slowopts.BytesPerSecond, 1024*1024*16)
 			}
 			if slowopts.TempDir == "" {
 				slowopts.TempDir = filepath.Join(dir, ".temp")
@@ -614,7 +613,7 @@ func (r *RollingFile) doEnsureBackups(ctx context.Context, count int) {
 		}
 	}()
 
-	stream, err := cube.ReadDirStream(r.dir)
+	stream, err := cube.ReadDirStream(r.dir, nil)
 	if err != nil {
 		return
 	}

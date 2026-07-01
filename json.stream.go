@@ -39,8 +39,6 @@ func JsonStreamZeroCopy(fp string) (iter.Seq2[json.RawMessage, error], error) {
 
 	var cs = _CloseScope{file: fobj.Close}
 
-	var reader io.Reader = bufio.NewReaderSize(fobj, 1024*1024*4)
-
 	fp = strings.ToLower(fp)
 	isgzip := strings.HasSuffix(fp, ".gz")
 	isjsonl := false
@@ -55,6 +53,7 @@ func JsonStreamZeroCopy(fp string) (iter.Seq2[json.RawMessage, error], error) {
 		return jsonlStreamZeroCopy(fobj, isgzip, false)
 	}
 
+	var reader io.Reader = bufio.NewReaderSize(fobj, 1024*1024*4)
 	if isgzip {
 		gr, gr_init_err := gzip.NewReader(reader)
 		if gr_init_err != nil {

@@ -94,10 +94,14 @@ type JsonBytesOutput struct {
 	Txt []byte
 }
 
-func NewJsonBytesOutput[T any](val T) *JsonBytesOutput {
-	return &JsonBytesOutput{
-		Txt: cube.MustMarshalJSON(val),
+func NewJsonBytesOutput[T any](val T) (*JsonBytesOutput, error) {
+	txt, err := cube.MarshalJSON(val)
+	if err != nil {
+		return nil, err
 	}
+	return &JsonBytesOutput{
+		Txt: txt,
+	}, nil
 }
 
 func (j *JsonBytesOutput) BytesBody() ([]byte, bool) {

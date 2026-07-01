@@ -1,42 +1,50 @@
 package cube
 
 import (
-	"bytes"
 	"encoding/json"
 	"reflect"
 	"strconv"
 	"unsafe"
 )
 
-func MustMarshalJSON(v any) []byte {
-	buf := bytes.NewBuffer(nil)
-	enc := json.NewEncoder(buf)
-	enc.SetEscapeHTML(false)
-	e := enc.Encode(v)
-	if e != nil {
-		panic(e)
-	}
-	return bytes.TrimSpace(buf.Bytes())
+func MarshalJSON(v any) ([]byte, error) {
+	return json.Marshal(v)
 }
 
-func MustMarshalJSONString(v any) string {
-	bs, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	return string(bs)
+func UnmarshalJSON(input []byte, dest any) error {
+	return json.Unmarshal(input, dest)
 }
 
-func MustMarshalJSONIndent(v any) []byte {
+func MarshalJSONIndent(v any) ([]byte, error) {
 	bs, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return bs
+	return bs, nil
 }
 
-func MustMarshalJSONIndentString(v any) string {
-	return string(MustMarshalJSONIndent(v))
+func MarshalJSONString(val any) (string, error) {
+	bs, err := MarshalJSON(val)
+	if err != nil {
+		return "", err
+	}
+	return unsafe.String(unsafe.SliceData(bs), len(bs)), nil
+}
+
+func MarshalJSONIndentString(v any) (string, error) {
+	bs, err := MarshalJSONIndent(v)
+	if err != nil {
+		return "", err
+	}
+	return unsafe.String(unsafe.SliceData(bs), len(bs)), nil
+}
+
+func UnmarshalJSONString(txt string, dest any) error {
+	err := UnmarshalJSON(unsafe.Slice(unsafe.StringData(txt), len(txt)), dest)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 type IJsonValue interface {
@@ -48,7 +56,6 @@ func Peek[T IJsonValue](mapv map[string]any, keys ...string) (T, bool) {
 
 	var cur any = mapv
 	for _, key := range keys {
-
 		switch node := cur.(type) {
 		case map[string]any:
 			{
@@ -112,32 +119,4 @@ func Peek[T IJsonValue](mapv map[string]any, keys ...string) (T, bool) {
 		}
 	}
 	return dv, false
-}
-
-func UnmarshalJSONString(txt string, dest any) error {
-	err := json.Unmarshal(unsafe.Slice(unsafe.StringData(txt), len(txt)), dest)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func UnmarshalJSON(bytes []byte, dest any) error {
-	err := json.Unmarshal(bytes, dest)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func MarshalJSON(val any) ([]byte, error) {
-	return json.Marshal(val)
-}
-
-func MarshalJSONString(val any) (string, error) {
-	bs, err := json.Marshal(val)
-	if err != nil {
-		return "", err
-	}
-	return string(bs), nil
 }

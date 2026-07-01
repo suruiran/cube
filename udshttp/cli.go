@@ -89,7 +89,7 @@ func incr_retry_times(ctx context.Context) (context.Context, int) {
 	return ctx, ecv.count
 }
 
-func spwan(cli *Client) error {
+func spawn(cli *Client) error {
 	lockfn := fmt.Sprintf("%s.lock", cli.fp)
 
 	lock := flock.New(lockfn)
@@ -185,11 +185,16 @@ func Request[Input any, Output any](ctx context.Context, cli *Client, input Inpu
 			})
 		})
 	}
+
+	inputbs, err := cube.MarshalJSON(input)
+	if err != nil {
+		return out, err
+	}
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
 		fmt.Sprintf("http://localhost/%s", strings.ToLower(it.Name())),
-		bytes.NewBuffer(cube.MustMarshalJSON(input)),
+		bytes.NewBuffer(inputbs),
 	)
 	if err != nil {
 		scopelog.Error("create request failed", slog.Any("error", err))
@@ -226,7 +231,7 @@ func Request[Input any, Output any](ctx context.Context, cli *Client, input Inpu
 			time.Sleep(time.Duration(rand.IntN(80)) * time.Millisecond)
 		}
 
-		err := spwan(cli)
+		err := spawn(cli)
 		if err != nil {
 			scopelog.Error("spwan server failed", slog.Any("error", err), slog.Int("retry", retrytimes))
 			return out, err

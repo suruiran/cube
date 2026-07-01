@@ -3,6 +3,7 @@ package udshttp
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -34,7 +35,8 @@ func GetRunningPid(fp string) (int, error) {
 			return int(pid), nil
 		}
 	} else {
-		fmt.Printf("cube.udshttp: GetPidExecPath is nil, pid: %d\n", pid)
+		slog.Warn("cube.udshttp: GetPidExecPath is nil", slog.Uint64("pid", pid))
+		return int(pid), nil
 	}
 	return 0, err
 }
