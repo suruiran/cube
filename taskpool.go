@@ -3,8 +3,11 @@ package cube
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type ITaskItem interface {
@@ -41,6 +44,9 @@ func NewTaskPool(opts *TaskPoolOptions) *TaskPool {
 	if opts.Context == nil {
 		opts.Context = context.Background()
 	}
+	if opts.Workers <= 0 {
+		opts.Workers = runtime.NumCPU() / 2
+	}
 	if opts.MaxQueueSize <= 0 {
 		opts.MaxQueueSize = opts.Workers * 2
 	}
@@ -57,8 +63,20 @@ func NewTaskPool(opts *TaskPoolOptions) *TaskPool {
 func (pool *TaskPool) run(size int) {
 	for range size {
 		Fly(func() {
-			for f := range pool.tasks {
-				pool.exec(f)
+			for {
+				select {
+				case f, ok := <-pool.tasks:
+					{
+						if !ok {
+							return
+						}
+						pool.exec(f)
+					}
+				case <-pool.ctx.Done():
+					{
+						return
+					}
+				}
 			}
 		})
 	}
@@ -70,7 +88,9 @@ func (pool *TaskPool) exec(task ITaskItem) {
 		if err := recover(); err != nil {
 			if pool.onpanic != nil {
 				pool.onpanic(pool.ctx, task, err)
+				return
 			}
+			slog.Error("cube.taskpool paniced", slog.Any("paniced", err))
 		}
 	}()
 
@@ -89,17 +109,6 @@ func (pool *TaskPool) Add(task ITaskItem) (err error) {
 	if pool.closed.Load() {
 		return ErrTaskPoolClosed
 	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			if pool.closed.Load() {
-				pool.wg.Done()
-				err = ErrTaskPoolClosed
-			} else {
-				panic(r)
-			}
-		}
-	}()
 
 	pool.wg.Add(1)
 
@@ -121,8 +130,53 @@ func (pool *TaskPool) Add(task ITaskItem) (err error) {
 	}
 }
 
+type TaskPoolRetryOptions struct {
+	Async   bool
+	Times   int
+	Step    time.Duration
+	OnError func(task ITaskItem, err error)
+}
+
+func (pool *TaskPool) AddWithRetry(task ITaskItem, opts *TaskPoolRetryOptions) {
+	if opts == nil {
+		opts = &TaskPoolRetryOptions{}
+	}
+
+	retry := func() {
+		i := 0
+		for {
+			err := pool.Add(task)
+			i++
+			if err == nil {
+				return
+			}
+			if opts.Times > 0 && i >= opts.Times {
+				if opts.OnError == nil {
+					slog.Error("")
+				}
+				opts.OnError(task, err)
+				return
+			}
+			if opts.Step > 0 {
+				time.Sleep(opts.Step)
+			}
+		}
+	}
+
+	if opts.Async {
+		Fly(retry)
+		return
+	}
+
+	retry()
+}
+
 func (pool *TaskPool) AddFunc(f func(ctx context.Context)) error {
 	return pool.Add(TaskFuncType(f))
+}
+
+func (pool *TaskPool) AddFuncWithRetry(f func(ctx context.Context), opts *TaskPoolRetryOptions) {
+	pool.AddWithRetry(TaskFuncType(f), opts)
 }
 
 func (pool *TaskPool) Close(wait bool) {
@@ -136,8 +190,4 @@ func (pool *TaskPool) Close(wait bool) {
 
 	close(pool.tasks)
 	pool.cancel()
-
-	if !wait {
-		pool.wg.Wait()
-	}
 }
