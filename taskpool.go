@@ -5,8 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"runtime"
-	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -23,10 +21,9 @@ func (t TaskFuncType) Exec(ctx context.Context) {
 var _ ITaskItem = TaskFuncType(nil)
 
 type TaskPool struct {
-	closed atomic.Bool
+	counter CloseableCounter
 
 	tasks chan ITaskItem
-	wg    sync.WaitGroup
 
 	ctx     context.Context
 	cancel  context.CancelFunc
@@ -41,14 +38,17 @@ type TaskPoolOptions struct {
 }
 
 func NewTaskPool(opts *TaskPoolOptions) *TaskPool {
+	if opts == nil {
+		opts = &TaskPoolOptions{}
+	}
 	if opts.Context == nil {
 		opts.Context = context.Background()
 	}
 	if opts.Workers <= 0 {
-		opts.Workers = runtime.NumCPU() / 2
+		opts.Workers = max(runtime.NumCPU()/2, 1)
 	}
 	if opts.MaxQueueSize <= 0 {
-		opts.MaxQueueSize = opts.Workers * 2
+		opts.MaxQueueSize = opts.Workers * 8
 	}
 	pool := &TaskPool{
 		tasks:   make(chan ITaskItem, opts.MaxQueueSize),
@@ -84,19 +84,15 @@ func (pool *TaskPool) run(size int) {
 
 func (pool *TaskPool) exec(task ITaskItem) {
 	defer func() {
-		pool.wg.Done()
+		pool.counter.Release()
 		if err := recover(); err != nil {
 			if pool.onpanic != nil {
 				pool.onpanic(pool.ctx, task, err)
 				return
 			}
-			slog.Error("cube.taskpool paniced", slog.Any("paniced", err))
+			slog.Error("cube.taskpool panicked", slog.Any("panic", err))
 		}
 	}()
-
-	if pool.ctx.Err() != nil {
-		return
-	}
 	task.Exec(pool.ctx)
 }
 
@@ -106,11 +102,9 @@ var (
 )
 
 func (pool *TaskPool) Add(task ITaskItem) (err error) {
-	if pool.closed.Load() {
+	if !pool.counter.Acquire() {
 		return ErrTaskPoolClosed
 	}
-
-	pool.wg.Add(1)
 
 	select {
 	case pool.tasks <- task:
@@ -119,12 +113,12 @@ func (pool *TaskPool) Add(task ITaskItem) (err error) {
 		}
 	case <-pool.ctx.Done():
 		{
-			pool.wg.Done()
+			pool.counter.Release()
 			return pool.ctx.Err()
 		}
 	default:
 		{
-			pool.wg.Done()
+			pool.counter.Release()
 			return ErrTaskPoolQueueFull
 		}
 	}
@@ -142,6 +136,14 @@ func (pool *TaskPool) AddWithRetry(task ITaskItem, opts *TaskPoolRetryOptions) {
 		opts = &TaskPoolRetryOptions{}
 	}
 
+	onerr := func(e error) {
+		if opts.OnError == nil {
+			slog.Error("cube.TaskPool: submit task failed", slog.Any("err", e))
+		} else {
+			opts.OnError(task, e)
+		}
+	}
+
 	retry := func() {
 		i := 0
 		for {
@@ -150,15 +152,17 @@ func (pool *TaskPool) AddWithRetry(task ITaskItem, opts *TaskPoolRetryOptions) {
 			if err == nil {
 				return
 			}
+			if errors.Is(err, context.Canceled) || errors.Is(err, ErrTaskPoolClosed) {
+				return
+			}
 			if opts.Times > 0 && i >= opts.Times {
-				if opts.OnError == nil {
-					slog.Error("")
-				}
-				opts.OnError(task, err)
+				onerr(err)
 				return
 			}
 			if opts.Step > 0 {
 				time.Sleep(opts.Step)
+			} else {
+				time.Sleep(time.Millisecond)
 			}
 		}
 	}
@@ -179,15 +183,64 @@ func (pool *TaskPool) AddFuncWithRetry(f func(ctx context.Context), opts *TaskPo
 	pool.AddWithRetry(TaskFuncType(f), opts)
 }
 
-func (pool *TaskPool) Close(wait bool) {
-	if !pool.closed.CompareAndSwap(false, true) {
+type CloseMode int
+
+const (
+	CloseModeGraceful CloseMode = iota
+	CloseModeImmediate
+	CloseModeDrain
+)
+
+func (pool *TaskPool) Close(mode CloseMode) {
+	if !pool.counter.Close() {
 		return
 	}
 
-	if wait {
-		pool.wg.Wait()
+	switch mode {
+	case CloseModeImmediate:
+		{
+			pool.cancel()
+			return
+		}
+	case CloseModeGraceful:
+		{
+			pool.cancel()
+		drain:
+			for {
+				select {
+				case _, ok := <-pool.tasks:
+					{
+						if !ok {
+							break drain
+						}
+						pool.counter.Release()
+					}
+				default:
+					{
+						break drain
+					}
+				}
+			}
+			pool.counter.Wait(0)
+			return
+		}
+	case CloseModeDrain:
+		{
+			pool.counter.Wait(0)
+			pool.cancel()
+			return
+		}
+	default:
+		{
+			panic(errors.New("cube.taskpool: unknonwn waitkind"))
+		}
 	}
+}
 
-	close(pool.tasks)
-	pool.cancel()
+func (pool *TaskPool) CloseImmediate() {
+	pool.Close(CloseModeImmediate)
+}
+
+func (pool *TaskPool) CloseDrain() {
+	pool.Close(CloseModeDrain)
 }

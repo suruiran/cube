@@ -180,15 +180,12 @@ func (r *RollingFile) rename(t time.Time) error {
 		return err
 	}
 	if r.compressTaskPool != nil {
-		if err := r.compressTaskPool.AddFunc(func(ctx context.Context) {
-			docompress(ctx, r.slowCompressDir, filename, r.useSlowCompress, r.slowCompressLimit)
-		}); err != nil {
-			fmt.Fprintf(
-				os.Stderr,
-				"cube.rolling: add compress task failed, %s, %s\n",
-				filename, err,
-			)
-		}
+		r.compressTaskPool.AddFuncWithRetry(
+			func(ctx context.Context) {
+				docompress(ctx, r.slowCompressDir, filename, r.useSlowCompress, r.slowCompressLimit)
+			},
+			&cube.TaskPoolRetryOptions{Async: true},
+		)
 	}
 	return nil
 }
@@ -342,7 +339,7 @@ func (r *RollingFile) Close() error {
 	}
 
 	if r.compressTaskPool != nil {
-		r.compressTaskPool.Close(false)
+		r.compressTaskPool.CloseDrain()
 	}
 
 	saveerr := r.save()
