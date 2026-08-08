@@ -19,7 +19,7 @@ import (
 	"github.com/suruiran/cube"
 )
 
-type _FsAdminChecker struct {
+type _RoFsAdminChecker struct {
 	secret    []byte
 	fsdir     string
 	header    string
@@ -29,7 +29,7 @@ type _FsAdminChecker struct {
 	usedfiles sync.Map
 }
 
-func (ac *_FsAdminChecker) Do(ctx context.Context, cli *http.Client, req *http.Request) (*http.Response, error) {
+func (ac *_RoFsAdminChecker) Do(ctx context.Context, cli *http.Client, req *http.Request) (*http.Response, error) {
 	if cli == nil {
 		cli = http.DefaultClient
 	}
@@ -45,7 +45,7 @@ var (
 	filenameRegexp = regexp.MustCompile(`^[a-z0-9]{12}$`)
 )
 
-func (ac *_FsAdminChecker) make(req *http.Request) (func(), error) {
+func (ac *_RoFsAdminChecker) make(req *http.Request) (func(), error) {
 	filename := ""
 	fullpath := ""
 	for {
@@ -93,7 +93,7 @@ func equalbytes(a, b []byte) bool {
 	return subtle.ConstantTimeCompare(a, b) == 1
 }
 
-func (ac *_FsAdminChecker) Check(ctx context.Context, ip string, req *http.Request) error {
+func (ac *_RoFsAdminChecker) Check(ctx context.Context, ip string, req *http.Request) error {
 	ac.wtest.Do(func() {
 		fullpath := filepath.Join(ac.fsdir, ".wtest")
 		fobj, err := os.OpenFile(fullpath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
@@ -186,22 +186,52 @@ func (ac *_FsAdminChecker) Check(ctx context.Context, ip string, req *http.Reque
 	return nil
 }
 
-var _ IAdminChecker = (*_FsAdminChecker)(nil)
+var _ IAdminChecker = (*_RoFsAdminChecker)(nil)
 
-// NewFsAdminChecker
+// NewReadonlyFsAdminChecker
 // Help dockerized services to verify that admin requests from the host.
 // It mandates a read-only mounted fsdir, rejecting all requests if write permission is detected.
-func NewFsAdminChecker(secret string, fsdir string, header string, filesize int64) IAdminChecker {
+func NewReadonlyFsAdminChecker(secret string, fsdir string, header string, filesize int64) IAdminChecker {
 	if filesize <= 0 {
 		filesize = 512
 	}
 	if header == "" {
 		header = "X-FsAdmin-Token"
 	}
-	return &_FsAdminChecker{
+	return &_RoFsAdminChecker{
 		secret:   []byte(secret),
 		fsdir:    fsdir,
 		header:   header,
 		filesize: filesize,
 	}
+}
+
+type _SameHostAdminChecker struct{}
+
+var localips = map[string]bool{
+	"127.0.0.1": true,
+	"::1":       true,
+}
+
+func (*_SameHostAdminChecker) Check(ctx context.Context, ip string, req *http.Request) error {
+	if _, ok := localips[ip]; !ok {
+		return fmt.Errorf(
+			"SameHostAdminChecker: reject remote ip %s",
+			ip,
+		)
+	}
+	return nil
+}
+
+func (*_SameHostAdminChecker) Do(ctx context.Context, cli *http.Client, req *http.Request) (*http.Response, error) {
+	if cli == nil {
+		cli = http.DefaultClient
+	}
+	return cli.Do(req)
+}
+
+var _ IAdminChecker = (*_SameHostAdminChecker)(nil)
+
+func NewSameHostAdminChecker() IAdminChecker {
+	return &_SameHostAdminChecker{}
 }

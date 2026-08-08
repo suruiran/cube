@@ -199,7 +199,7 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 			}
 			if err := group.adminchecker.Check(req.Context(), remoteaddr, req); err != nil {
 				respw.WriteHeader(http.StatusNotFound)
-				group.logger.Error("RejectedAdminCall.Check", slog.String("remoteaddr", remoteaddr), logx.ErrorWithStacktrace(err, &logx.StacktraceOptions{Skip: 3}))
+				group.logger.Error("RejectedAdminCall.Check", slog.String("remoteaddr", remoteaddr), logx.Error(err))
 				return
 			}
 		}
