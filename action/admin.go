@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -95,7 +96,7 @@ func equalbytes(a, b []byte) bool {
 
 func (ac *_RoFsAdminChecker) Check(ctx context.Context, ip string, req *http.Request) error {
 	ac.wtest.Do(func() {
-		fullpath := filepath.Join(ac.fsdir, ".wtest")
+		fullpath := filepath.Join(ac.fsdir, fmt.Sprintf(".wtest.%d", time.Now().UnixMilli()))
 		fobj, err := os.OpenFile(fullpath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
 		if err != nil {
 			cube.FlyAsSwallow(func() {
@@ -208,13 +209,9 @@ func NewReadonlyFsAdminChecker(secret string, fsdir string, header string, files
 
 type _SameHostAdminChecker struct{}
 
-var localips = map[string]bool{
-	"127.0.0.1": true,
-	"::1":       true,
-}
-
 func (*_SameHostAdminChecker) Check(ctx context.Context, ip string, req *http.Request) error {
-	if _, ok := localips[ip]; !ok {
+	netip := net.ParseIP(ip)
+	if netip == nil || !netip.IsLoopback() {
 		return fmt.Errorf(
 			"SameHostAdminChecker: reject remote ip %s",
 			ip,
@@ -234,4 +231,33 @@ var _ IAdminChecker = (*_SameHostAdminChecker)(nil)
 
 func NewSameHostAdminChecker() IAdminChecker {
 	return &_SameHostAdminChecker{}
+}
+
+type _PasswdAdminChecker struct {
+	passwd string
+	get    func(req *http.Request) string
+}
+
+func (pac *_PasswdAdminChecker) Check(ctx context.Context, ip string, req *http.Request) error {
+	passwd := pac.get(req)
+	if subtle.ConstantTimeCompare([]byte(passwd), []byte(pac.passwd)) != 1 {
+		return fmt.Errorf("PasswdAdminChecker: reject passwd %s", passwd)
+	}
+	return nil
+}
+
+func (*_PasswdAdminChecker) Do(ctx context.Context, cli *http.Client, req *http.Request) (*http.Response, error) {
+	if cli == nil {
+		cli = http.DefaultClient
+	}
+	return cli.Do(req)
+}
+
+var _ IAdminChecker = (*_PasswdAdminChecker)(nil)
+
+func NewPasswdAdminChecker(passwd string, get func(req *http.Request) string) IAdminChecker {
+	return &_PasswdAdminChecker{
+		passwd: passwd,
+		get:    get,
+	}
 }
