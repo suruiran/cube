@@ -71,17 +71,16 @@ func gumfilter(items []string) string {
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {
-		panic(err)
+		return ""
 	}
-	choose := strings.TrimSpace(string(out))
-	if choose == "" {
-		panic(fmt.Errorf("user canceled"))
-	}
-	return choose
+	return strings.TrimSpace(string(out))
 }
 
 func (cr *CliReader) StringWithOpts(name string, opts *ReadStringOpts) string {
 	if opts != nil && len(opts.Enums) > 0 {
+		if len(opts.Enums) == 1 {
+			return opts.Enums[0]
+		}
 		if gum_avail {
 			return gumfilter(opts.Enums)
 		}
