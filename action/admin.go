@@ -210,7 +210,11 @@ func NewReadonlyFsAdminChecker(secret string, fsdir string, header string, files
 type _SameHostAdminChecker struct{}
 
 func (*_SameHostAdminChecker) Check(ctx context.Context, ip string, req *http.Request) error {
-	netip := net.ParseIP(ip)
+	addr, _, err := net.SplitHostPort(ip)
+	if err != nil {
+		return err
+	}
+	netip := net.ParseIP(addr)
 	if netip == nil || !netip.IsLoopback() {
 		return fmt.Errorf(
 			"SameHostAdminChecker: reject remote ip %s",

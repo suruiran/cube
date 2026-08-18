@@ -27,6 +27,7 @@ func ServeGzipedFS(prefix string, fs http.FileSystem) http.HandlerFunc {
 
 		stat, _ := f.Stat()
 		w.Header().Add("Content-Encoding", "gzip")
+		w.Header().Add("Cache-Control", "public, max-age=21600")
 		http.ServeContent(w, r, fp, stat.ModTime(), f)
 	})
 }
