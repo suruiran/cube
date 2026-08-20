@@ -2,100 +2,7 @@ package seqs
 
 import (
 	"iter"
-
-	"github.com/suruiran/cube/logic"
 )
-
-type Kind int
-
-const (
-	Ok Kind = iota
-	Skip
-	Stop
-)
-
-func Pipe[T any, V any](
-	input iter.Seq[T],
-	ops ...func(ele any) (any, Kind),
-) iter.Seq[V] {
-	return func(yield func(V) bool) {
-	loop:
-		for ele := range input {
-			var av any = ele
-			for _, op := range ops {
-				var kind Kind
-				av, kind = op(av)
-				if kind == Stop {
-					return
-				}
-				if kind == Skip {
-					continue loop
-				}
-			}
-			if !yield(av.(V)) {
-				return
-			}
-		}
-	}
-}
-
-func Op[I any, O any](op func(ele I) (O, Kind)) func(any) (any, Kind) {
-	return func(ele any) (any, Kind) {
-		ov, kind := op(any(ele).(I))
-		return any(ov), kind
-	}
-}
-
-func Filter[T any](op func(ele T) bool) func(any) (any, Kind) {
-	return Op(func(ele T) (T, Kind) {
-		if op(ele) {
-			return ele, Ok
-		}
-		return ele, Skip
-	})
-}
-
-func FilterByValue[T any]() func(any) (any, Kind) {
-	return Op(func(ele T) (T, Kind) {
-		if logic.All(ele) {
-			return ele, Ok
-		}
-		return ele, Skip
-	})
-}
-
-func PipePair[K any, V any, OK any, OV any](
-	input iter.Seq2[K, V],
-	ops ...func(k any, v any) (any, any, Kind),
-) iter.Seq2[OK, OV] {
-	return func(yield func(OK, OV) bool) {
-	loop:
-		for k, v := range input {
-			var ak any = k
-			var av any = v
-			for _, op := range ops {
-				var kind Kind
-				ak, av, kind = op(ak, av)
-				if kind == Stop {
-					return
-				}
-				if kind == Skip {
-					continue loop
-				}
-			}
-			if !yield(ak.(OK), av.(OV)) {
-				return
-			}
-		}
-	}
-}
-
-func OpPair[IK any, IV any, OK any, OV any](op func(k IK, v IV) (OK, OV, Kind)) func(any, any) (any, any, Kind) {
-	return func(k any, v any) (any, any, Kind) {
-		oK, oV, kind := op(any(k).(IK), any(v).(IV))
-		return any(oK), any(oV), kind
-	}
-}
 
 func FromSlice[T any](sv []T) iter.Seq[T] {
 	return func(yield func(T) bool) {
@@ -117,32 +24,101 @@ func FromSliceWithIndex[T any](sv []T) iter.Seq2[int, T] {
 	}
 }
 
-func FromMap[T comparable, U any](mv map[T]U) iter.Seq2[T, U] {
-	return func(yield func(T, U) bool) {
-		for k, v := range mv {
-			if !yield(k, v) {
+type Op[T any] struct {
+	Seq iter.Seq[T]
+}
+
+func NewOp[T any](seq iter.Seq[T]) Op[T] {
+	return Op[T]{Seq: seq}
+}
+
+type Pair[T any, U any] struct {
+	Key   T
+	Value U
+}
+
+func FromSeq2[T any, U any](seq iter.Seq2[T, U]) Op[Pair[T, U]] {
+	return Op[Pair[T, U]]{Seq: func(yield func(Pair[T, U]) bool) {
+		for k, v := range seq {
+			if !yield(Pair[T, U]{Key: k, Value: v}) {
 				return
 			}
 		}
+	}}
+}
+
+func (seq Op[T]) Map[N any](each func(T) N) Op[N] {
+	return Op[N]{
+		Seq: func(yield func(N) bool) {
+			for ele := range seq.Seq {
+				if !yield(each(ele)) {
+					return
+				}
+			}
+		},
 	}
 }
 
-func Reverse[T any](sv []T) iter.Seq[T] {
-	return func(yield func(T) bool) {
-		for i := len(sv) - 1; i >= 0; i-- {
-			if !yield(sv[i]) {
-				return
+func (seq Op[T]) MapWithIndex[N any](each func(T, int) N) Op[N] {
+	return Op[N]{
+		Seq: func(yield func(N) bool) {
+			i := -1
+			for ele := range seq.Seq {
+				i++
+				if !yield(each(ele, i)) {
+					return
+				}
 			}
-		}
+		},
 	}
 }
 
-func ReverseWithIndex[T any](sv []T) iter.Seq2[int, T] {
-	return func(yield func(int, T) bool) {
-		for i := len(sv) - 1; i >= 0; i-- {
-			if !yield(i, sv[i]) {
-				return
+func (seq Op[T]) Filter(op func(T) bool) Op[T] {
+	return Op[T]{
+		Seq: func(yield func(T) bool) {
+			for ele := range seq.Seq {
+				if !op(ele) {
+					continue
+				}
+				if !yield(ele) {
+					return
+				}
 			}
-		}
+		},
 	}
+}
+
+func (seq Op[T]) FilterWithIndex(op func(T, int) bool) Op[T] {
+	return Op[T]{
+		Seq: func(yield func(T) bool) {
+			i := -1
+			for ele := range seq.Seq {
+				i++
+				if !op(ele, i) {
+					continue
+				}
+				if !yield(ele) {
+					return
+				}
+			}
+		},
+	}
+}
+
+func (seq Op[T]) Reduce[N any](reduce func(N, T) N, init N) N {
+	var acc = init
+	for ele := range seq.Seq {
+		acc = reduce(acc, ele)
+	}
+	return acc
+}
+
+func (seq Op[T]) ReduceWithIndex[N any](reduce func(N, T, int) N, init N) N {
+	var acc = init
+	i := -1
+	for ele := range seq.Seq {
+		i++
+		acc = reduce(acc, ele, i)
+	}
+	return acc
 }

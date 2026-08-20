@@ -147,5 +147,8 @@ func jsonlStreamZeroCopy(fobj *os.File, isgzip bool, seek0 bool) (iter.Seq2[json
 				return
 			}
 		}
+		if err := scanner.Err(); err != nil {
+			yield(nil, err)
+		}
 	}, nil
 }
