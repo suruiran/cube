@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
-	"unsafe"
 
 	"github.com/suruiran/cube"
 )
@@ -68,27 +67,42 @@ func (c *Output[T]) WithHeader(fnc func(http.Header)) *Output[T] {
 	return c
 }
 
-type PlainTextOutput struct {
-	Txt string
+type PlainOutput struct {
+	code   int
+	header http.Header
+	Txt    []byte
 }
 
-func NewPlainTextOutput(txt string) *PlainTextOutput {
-	return &PlainTextOutput{Txt: txt}
+func NewPlainTextOutput(txt []byte) *PlainOutput {
+	return &PlainOutput{Txt: txt}
 }
 
-func (p *PlainTextOutput) BytesBody() ([]byte, bool) {
-	return unsafe.Slice(unsafe.StringData(p.Txt), len(p.Txt)), true
+func (p *PlainOutput) WithCode(code int) *PlainOutput {
+	p.code = code
+	return p
 }
 
-func (p *PlainTextOutput) Code() int {
-	return 200
+func (p *PlainOutput) WithHeader(fnc func(http.Header)) *PlainOutput {
+	if p.header == nil {
+		p.header = make(http.Header)
+	}
+	fnc(p.header)
+	return p
 }
 
-func (p *PlainTextOutput) Headers() http.Header {
-	return nil
+func (p *PlainOutput) BytesBody() ([]byte, bool) {
+	return p.Txt, true
 }
 
-var _ IHttpOutput = (*PlainTextOutput)(nil)
+func (p *PlainOutput) Code() int {
+	return p.code
+}
+
+func (p *PlainOutput) Headers() http.Header {
+	return p.header
+}
+
+var _ IHttpOutput = (*PlainOutput)(nil)
 
 type JsonBytesOutput struct {
 	Txt []byte
