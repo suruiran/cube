@@ -218,3 +218,18 @@ func Api[Input any, Output IHttpOutput](
 	)
 	group.iotypes[name] = _IoTypes{in: inputtype, out: outputtype}
 }
+
+func (group *ActionGroup) Api[Input any, Output IHttpOutput](
+	serializer ISerializer,
+	fnc func(ctx context.Context, input *Input) (Output, error),
+	opts *ActionOptions,
+) {
+	Api(group, serializer, fnc, opts)
+}
+
+func (group *ActionGroup) JSONApi[Input any, Output IHttpOutput](
+	fnc func(ctx context.Context, input *Input) (Output, error),
+	opts *ActionOptions,
+) {
+	JSONApi(group, fnc, opts)
+}

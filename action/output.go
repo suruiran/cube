@@ -14,13 +14,13 @@ type IHttpOutput interface {
 	BytesBody() ([]byte, bool)
 }
 
-type Output[T any] struct {
+type JSONOutput[T any] struct {
 	code   int
 	header http.Header
 	val    sql.Null[T]
 }
 
-func (c *Output[T]) BytesBody() ([]byte, bool) {
+func (c *JSONOutput[T]) BytesBody() ([]byte, bool) {
 	return nil, false
 }
 
@@ -28,38 +28,38 @@ var (
 	jsonNull = []byte("null")
 )
 
-func (c *Output[T]) MarshalJSON() ([]byte, error) {
+func (c *JSONOutput[T]) MarshalJSON() ([]byte, error) {
 	if c.val.Valid {
 		return cube.MarshalJSON(c.val.V)
 	}
 	return jsonNull, nil
 }
 
-func (c *Output[T]) Code() int {
+func (c *JSONOutput[T]) Code() int {
 	return c.code
 }
 
-func (c *Output[T]) Headers() http.Header {
+func (c *JSONOutput[T]) Headers() http.Header {
 	return c.header
 }
 
-var _ IHttpOutput = (*Output[int])(nil)
+var _ IHttpOutput = (*JSONOutput[int])(nil)
 
-var _ json.Marshaler = (*Output[int])(nil)
+var _ json.Marshaler = (*JSONOutput[int])(nil)
 
-func NewOutput[T any](val T) *Output[T] {
-	return &Output[T]{
+func NewJSONOutput[T any](val T) *JSONOutput[T] {
+	return &JSONOutput[T]{
 		code: http.StatusOK,
 		val:  sql.Null[T]{V: val, Valid: true},
 	}
 }
 
-func (c *Output[T]) WithCode(code int) *Output[T] {
+func (c *JSONOutput[T]) WithCode(code int) *JSONOutput[T] {
 	c.code = code
 	return c
 }
 
-func (c *Output[T]) WithHeader(fnc func(http.Header)) *Output[T] {
+func (c *JSONOutput[T]) WithHeader(fnc func(http.Header)) *JSONOutput[T] {
 	if c.header == nil {
 		c.header = make(http.Header)
 	}

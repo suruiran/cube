@@ -14,7 +14,7 @@ type LoginResult struct {
 	Token string
 }
 
-func login(ctx context.Context, params *Login) (*Output[LoginResult], error) {
+func login(ctx context.Context, params *Login) (*JSONOutput[LoginResult], error) {
 	return nil, nil
 }
 
