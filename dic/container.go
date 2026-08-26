@@ -115,16 +115,16 @@ func IsTokenNotFound(val any) bool {
 	return errors.As(e, &target)
 }
 
-func (dic *Container[T]) getbytoken(token T, k reflect.Type) reflect.Value {
+func (dic *Container[T]) getbytoken(token T, k reflect.Type) (reflect.Value, bool) {
 	tvm, ok := dic.tokenvalpool[k]
 	if !ok {
-		panic(&errTokenNotFound{token: token, rtype: k})
+		return reflect.Value{}, false
 	}
 	v, ok := tvm[token]
 	if !ok {
 		panic(&errTokenNotFound{token: token, rtype: k})
 	}
-	return v
+	return v, true
 }
 
 func (dic *Container[T]) mkfnc(fnc any) *_DiFnc {
@@ -153,12 +153,11 @@ func (dic *Container[T]) Register(fnc any) *Container[T] {
 	return dic
 }
 
-func (dic *Container[T]) IfReady(fnc any) *Container[T] {
+func (dic *Container[T]) OnReady(fnc any) *Container[T] {
 	ele := dic.mkfnc(fnc)
 	if dic.execAsync(ele) {
 		return dic
 	}
-
 	if dic.execed {
 		panic(ErrContainerAlreadyExecuted)
 	}
@@ -166,10 +165,33 @@ func (dic *Container[T]) IfReady(fnc any) *Container[T] {
 	return dic
 }
 
+func (dic *Container[T]) Get[V any](dest *V, token ...T) bool {
+	dt := reflect.TypeOf(dest).Elem()
+	if len(token) > 0 {
+		val, ok := dic.getbytoken(token[0], dt)
+		if !ok {
+			return false
+		}
+		dv := reflect.ValueOf(dest)
+		dv.Elem().Set(val)
+		return true
+	}
+	v, ok := dic.get(dt)
+	if !ok {
+		return false
+	}
+	dv := reflect.ValueOf(dest)
+	dv.Elem().Set(v)
+	return true
+}
+
 func (dic *Container[T]) GetByToken(dest any, token T) *Container[T] {
 	dv := reflect.ValueOf(dest)
 	dt := dv.Type().Elem()
-	val := dic.getbytoken(token, dt)
+	val, ok := dic.getbytoken(token, dt)
+	if !ok {
+		panic(&errTokenNotFound{token: token, rtype: dt})
+	}
 	dv.Elem().Set(val)
 	return dic
 }

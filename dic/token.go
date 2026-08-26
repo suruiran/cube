@@ -6,7 +6,7 @@ type __I_private_dic_token_value__ interface {
 	__private_dic_token_value__() (any, reflect.Type, reflect.Value)
 }
 
-var tokenValueInterfaceType = reflect.TypeOf((*__I_private_dic_token_value__)(nil)).Elem()
+var tokenValueInterfaceType = reflect.TypeFor[__I_private_dic_token_value__]()
 
 type TokenValue[T comparable] struct {
 	token T

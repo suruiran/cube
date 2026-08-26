@@ -26,11 +26,9 @@ type G struct {
 func TestDi(t *testing.T) {
 	container := dic.New[string]()
 
-	container.IfReady(
-		func(a *A, f F) {
-			fmt.Println("A F Try After Exec")
-		},
-	)
+	container.OnReady(func(a *A, f F) {
+		fmt.Println("A F OnReady")
+	})
 
 	container.Register(func() (*C, F, []dic.TokenValue[string]) {
 		return &C{}, F(12), []dic.TokenValue[string]{
@@ -55,8 +53,17 @@ func TestDi(t *testing.T) {
 			GetByToken(&g13, "13")
 
 		fmt.Println("F", f, g12, g13)
-	}).IfReady(func(d *D) {
+	}).OnReady(func(d *D) {
 		fmt.Println("D Try In Exec")
 	}).
 		Run()
+
+	var a *A
+	if container.Get(&a) {
+		fmt.Println(a)
+	}
+	var g12 *G
+	if container.Get(&g12, "12") {
+		fmt.Println(g12)
+	}
 }

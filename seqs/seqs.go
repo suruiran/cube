@@ -2,6 +2,7 @@ package seqs
 
 import (
 	"iter"
+	"slices"
 )
 
 func FromSlice[T any](sv []T) iter.Seq[T] {
@@ -121,4 +122,8 @@ func (seq Op[T]) ReduceWithIndex[N any](reduce func(N, T, int) N, init N) N {
 		acc = reduce(acc, ele, i)
 	}
 	return acc
+}
+
+func (seq Op[T]) ToSlice() []T {
+	return slices.Collect(seq.Seq)
 }
