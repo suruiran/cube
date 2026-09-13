@@ -20,7 +20,7 @@ A collection of Go packages used in my personal projects, [DBNova](https://dbnov
 
 - rbc
 
-  A performance reflection implementation based on pre-cached typeinfo. the `rbc` stands for `Rubick`, a Dota2 hero. (I do not use this pkg in real projects yet.)
+  Init-time reflection framework. The `rbc` stands for `Rubick`, a `Dota 2` hero. (I do not use this pkg in real projects yet.)
 
 - sqlx
 
