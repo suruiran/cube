@@ -2,8 +2,6 @@ package cube
 
 import (
 	"testing"
-
-	"github.com/suruiran/cube/seqs"
 )
 
 func TestIsHostMatch(t *testing.T) {
@@ -85,7 +83,13 @@ func TestIsHostMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsHostMatch(tt.host, seqs.FromSlice(tt.whitehosts)); got != tt.want {
+			if got := IsHostMatch(tt.host, func(yield func(string) bool) {
+				for _, v := range tt.whitehosts {
+					if !yield(v) {
+						break
+					}
+				}
+			}); got != tt.want {
 				t.Errorf("\nName: %s\nInput Host: %q\nWhitehosts: %v\nWant (want): %v\nGot (got): %v",
 					tt.name, tt.host, tt.whitehosts, tt.want, got)
 			}

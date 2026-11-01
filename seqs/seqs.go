@@ -5,32 +5,22 @@ import (
 	"slices"
 )
 
-func FromSlice[T any](sv []T) iter.Seq[T] {
-	return func(yield func(T) bool) {
+type Op[T any] struct {
+	Seq iter.Seq[T]
+}
+
+func New[T any](seq iter.Seq[T]) Op[T] {
+	return Op[T]{Seq: seq}
+}
+
+func FromSlice[T any](sv []T) Op[T] {
+	return New(func(yield func(T) bool) {
 		for _, v := range sv {
 			if !yield(v) {
 				return
 			}
 		}
-	}
-}
-
-func FromSliceWithIndex[T any](sv []T) iter.Seq2[int, T] {
-	return func(yield func(int, T) bool) {
-		for i, v := range sv {
-			if !yield(i, v) {
-				return
-			}
-		}
-	}
-}
-
-type Op[T any] struct {
-	Seq iter.Seq[T]
-}
-
-func NewOp[T any](seq iter.Seq[T]) Op[T] {
-	return Op[T]{Seq: seq}
+	})
 }
 
 type Pair[T any, U any] struct {
@@ -48,7 +38,17 @@ func FromSeq2[T any, U any](seq iter.Seq2[T, U]) Op[Pair[T, U]] {
 	}}
 }
 
-func (seq Op[T]) Map[N any](each func(T) N) Op[N] {
+func FromSliceWithIndex[T any](sv []T) Op[Pair[int, T]] {
+	return FromSeq2(func(yield func(int, T) bool) {
+		for i, v := range sv {
+			if !yield(i, v) {
+				return
+			}
+		}
+	})
+}
+
+func (seq Op[T]) MapTo[N any](each func(T) N) Op[N] {
 	return Op[N]{
 		Seq: func(yield func(N) bool) {
 			for ele := range seq.Seq {
@@ -60,9 +60,35 @@ func (seq Op[T]) Map[N any](each func(T) N) Op[N] {
 	}
 }
 
-func (seq Op[T]) MapWithIndex[N any](each func(T, int) N) Op[N] {
+func (seq Op[T]) Map(each func(T) T) Op[T] {
+	return Op[T]{
+		Seq: func(yield func(T) bool) {
+			for ele := range seq.Seq {
+				if !yield(each(ele)) {
+					return
+				}
+			}
+		},
+	}
+}
+
+func (seq Op[T]) MapToWithIndex[N any](each func(T, int) N) Op[N] {
 	return Op[N]{
 		Seq: func(yield func(N) bool) {
+			i := -1
+			for ele := range seq.Seq {
+				i++
+				if !yield(each(ele, i)) {
+					return
+				}
+			}
+		},
+	}
+}
+
+func (seq Op[T]) MapWithIndex(each func(T, int) T) Op[T] {
+	return Op[T]{
+		Seq: func(yield func(T) bool) {
 			i := -1
 			for ele := range seq.Seq {
 				i++
@@ -124,6 +150,6 @@ func (seq Op[T]) ReduceWithIndex[N any](reduce func(N, T, int) N, init N) N {
 	return acc
 }
 
-func (seq Op[T]) ToSlice() []T {
+func (seq Op[T]) Collect() []T {
 	return slices.Collect(seq.Seq)
 }
