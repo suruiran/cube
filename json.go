@@ -1,7 +1,9 @@
 package cube
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"reflect"
 	"strconv"
 	"unsafe"
@@ -15,12 +17,21 @@ func UnmarshalJSON(input []byte, dest any) error {
 	return json.Unmarshal(input, dest)
 }
 
+var jsonBufPool = NewTypedPoolWithReset(
+	func() *bytes.Buffer { return bytes.NewBuffer(make([]byte, 0, 4096)) },
+	func(buf *bytes.Buffer) { buf.Reset() },
+)
+
 func MarshalJSONIndent(v any) ([]byte, error) {
-	bs, err := json.MarshalIndent(v, "", "  ")
+	buf := jsonBufPool.Get()
+	defer jsonBufPool.Put(buf)
+
+	enc := jsontext.NewEncoder(buf, jsontext.WithIndent("  "))
+	err := json.MarshalEncode(enc, v)
 	if err != nil {
 		return nil, err
 	}
-	return bs, nil
+	return bytes.Clone(buf.Bytes()), nil
 }
 
 func MarshalJSONString(val any) (string, error) {
