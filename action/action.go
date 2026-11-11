@@ -34,6 +34,7 @@ type ActionOptions struct {
 	RateLimitTakeN int
 	RequireAdmin   bool
 	OnlyDebug      bool
+	MaxBodySize    int
 }
 
 type _ActItem struct {
@@ -113,7 +114,7 @@ func (group *ActionGroup) nameof(act any) string {
 }
 
 const (
-	MaxRequestBodySize = 1024_00
+	DefaultMaxRequestBodySize = 1024_00
 )
 
 func (group *ActionGroup) RawApi(fnc ApiAction, opts *ActionOptions) {

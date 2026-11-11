@@ -95,7 +95,6 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 	}
 
 	handler := http.HandlerFunc(func(respw http.ResponseWriter, req *http.Request) {
-		req.Body = http.MaxBytesReader(respw, req.Body, MaxRequestBodySize)
 		_w := &OnceResponseWriter{ResponseWriter: respw}
 		respw = _w
 
@@ -114,6 +113,12 @@ func (group *ActionGroup) ToHandler(actiongetter func(req *http.Request) string)
 			respw.WriteHeader(http.StatusNotFound)
 			return
 		}
+
+		mrbs := actionitem.Opts.MaxBodySize
+		if mrbs < 1 {
+			mrbs = DefaultMaxRequestBodySize
+		}
+		req.Body = http.MaxBytesReader(respw, req.Body, int64(mrbs))
 
 		if actionitem.Opts.OnlyDebug {
 			if !cfg.Debug {

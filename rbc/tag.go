@@ -74,7 +74,7 @@ func (ti *TypeInfo) inittag(tagname string) error {
 		tag := parsetag(tagtxt)
 		if tag.Name == "" {
 			if converter, ok := tagDefaultNameConverters[tagname]; ok {
-				tag.Name = converter(tag.Name)
+				tag.Name = converter(fv.Info.Name)
 			} else {
 				tag.Name = fv.Info.Name
 			}

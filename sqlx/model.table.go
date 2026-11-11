@@ -68,6 +68,7 @@ func (info *ModelInfo) Indexes(keys ...string) ([]*Index, error) {
 
 func parseIndex(name string, indexes map[string]*Index, txt string) error {
 	txt = strings.TrimSpace(txt)
+	rawtag := txt
 	field := &IndexField{
 		Name: name,
 	}
@@ -110,7 +111,7 @@ loop:
 		indexname = strings.TrimSpace(txt[:orderidx])
 		_iv, err := strconv.ParseInt(strings.TrimSpace(txt[orderidx+1:]), 10, 64)
 		if err != nil {
-			return fmt.Errorf("sqlx: index field `%s` must have a define index", txt)
+			return fmt.Errorf("sqlx: index field `%s` must have a define index", rawtag)
 		}
 		order = int(_iv)
 	}
@@ -119,7 +120,7 @@ loop:
 	index := indexes[indexname]
 	if index == nil {
 		if indexname == "" {
-			return fmt.Errorf("sqlx: index field `%s` must have a index name", txt)
+			return fmt.Errorf("sqlx: index field `%s` must have a index name", rawtag)
 		}
 		index = &Index{
 			Name: indexname,

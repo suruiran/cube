@@ -2,11 +2,13 @@ package udshttp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 func _IsRunning(fp string) bool {
@@ -36,9 +38,12 @@ func GetRunningPid(fp string) (int, error) {
 		}
 	} else {
 		slog.Warn("cube.udshttp: GetPidExecPath is nil", slog.Uint64("pid", pid))
-		return int(pid), nil
+		process, err := os.FindProcess(int(pid))
+		if err == nil && process.Signal(syscall.Signal(0)) == nil {
+			return int(pid), nil
+		}
 	}
-	return 0, err
+	return 0, errors.New("process not running")
 }
 
 func writepid(fp string) {

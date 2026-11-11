@@ -19,6 +19,9 @@ type _ResultShape struct {
 }
 
 func newdiscard(typ reflect.Type) any {
+	if typ == nil {
+		return new(any)
+	}
 	return reflect.New(typ).Interface()
 }
 
@@ -58,16 +61,15 @@ func mkshape(eletype reflect.Type, row *sql.Rows) (*_ResultShape, error) {
 
 	size := 0
 	for idx, name := range shape.names {
-		fv := typeinf.MustField("db", name)
-		shape.fields = append(shape.fields, fv)
+		fv, _ := typeinf.Field("db", name)
 		if fv != nil {
 			size++
+			shape.fields = append(shape.fields, fv)
 			shape.discards = append(shape.discards, nil)
 		} else {
 			shape.discards = append(shape.discards, newdiscard(shape.types[idx]))
 		}
 	}
-
 	if size < 1 {
 		return nil, fmt.Errorf("sqlx: no field found for %s", eletype.String())
 	}

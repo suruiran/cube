@@ -1,4 +1,4 @@
-package cube
+package death
 
 import (
 	"os"
@@ -6,7 +6,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
-	"time"
 )
 
 var (
@@ -28,13 +27,18 @@ func IsDeathing() bool {
 	return deathing.Load()
 }
 
-func OnDeath(fn func()) {
+func Register(fn func()) {
 	deathlock.Lock()
 	defer deathlock.Unlock()
+
+	if deathing.Load() {
+		go fn()
+		return
+	}
 	deathfncs = append(deathfncs, fn)
 }
 
-func ExecAllDeathHooks() {
+func ExecHooks() {
 	if !deathing.CompareAndSwap(false, true) {
 		return
 	}
@@ -48,27 +52,27 @@ func ExecAllDeathHooks() {
 	wg := &sync.WaitGroup{}
 	wg.Add(len(tmps))
 	for _, fn := range tmps {
-		Fly(func() {
+		go func() {
 			defer wg.Done()
 			fn()
-		})
+		}()
 	}
-
-	Fly(func() {
-		time.Sleep(8 * time.Second)
-		os.Exit(1)
-	})
 
 	wg.Wait()
 }
 
 func init() {
-	deathsigchan = make(chan os.Signal, 1)
+	deathsigchan = make(chan os.Signal, 2)
 	signal.Notify(deathsigchan, DEATH_SIGNALS...)
 
-	Fly(func() {
+	go func() {
 		<-deathsigchan
-		ExecAllDeathHooks()
+		go func() {
+			<-deathsigchan
+			os.Exit(1)
+		}()
+
+		ExecHooks()
 		os.Exit(0)
-	})
+	}()
 }

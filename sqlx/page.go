@@ -71,6 +71,9 @@ func firstinternal[T any](ctx context.Context, stmt *Stmt, page _PageFn[T], args
 	if err != nil {
 		return nil, err
 	}
+	if len(tmp) < 1 {
+		return nil, sql.ErrNoRows
+	}
 	return &tmp[0], nil
 }
 

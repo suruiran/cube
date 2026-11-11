@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/suruiran/cube"
+	"github.com/suruiran/cube/death"
 	"github.com/suruiran/cube/logx"
 )
 
@@ -47,7 +48,7 @@ func NewServerWithLogger(fp string, mux *http.ServeMux, log *slog.Logger) (*Serv
 	}
 	writepid(fp)
 
-	cube.OnDeath(func() { CleanFiles(fp) })
+	death.Register(func() { CleanFiles(fp) })
 
 	if log == nil {
 		if cube.Env("CUBE_UDS_LOG_DEFAULT", false) {
@@ -71,6 +72,8 @@ func NewServerWithLogger(fp string, mux *http.ServeMux, log *slog.Logger) (*Serv
 				},
 			})
 			if err != nil {
+				_ = listener.Close()
+				CleanFiles(fp)
 				return nil, err
 			}
 		}
@@ -204,14 +207,18 @@ func Register[Input any, Output any](mux *http.ServeMux, logger *slog.Logger, fn
 			return
 		}
 
-		ctx, cancel := context.WithCancel(r.Context())
-		cancelbyreqids.Store(reqid, func() {
-			cancel()
-			cancelbyreqids.Delete(reqid)
-		})
+		var (
+			ctx    context.Context
+			cancel context.CancelFunc
+		)
 		if is_cancelable {
-			ctx = context.WithValue(context.Background(), _CtxKeyForReqId, reqid)
+			ctx, cancel = context.WithCancel(context.WithValue(context.Background(), _CtxKeyForReqId, reqid))
+			cancelbyreqids.Store(reqid, func() {
+				cancel()
+				cancelbyreqids.Delete(reqid)
+			})
 		} else {
+			ctx, cancel = context.WithCancel(r.Context())
 			defer cancel()
 		}
 

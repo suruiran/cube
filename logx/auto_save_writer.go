@@ -5,7 +5,7 @@ import (
 	"io"
 	"sync/atomic"
 
-	"github.com/suruiran/cube"
+	"github.com/suruiran/cube/death"
 )
 
 type Flusher interface {
@@ -72,7 +72,7 @@ func NewAutoSaveWriter(w io.Writer, closes ...func() error) *AutoSaveWriter {
 	if ok {
 		afw.f = fobj
 	}
-	cube.OnDeath(func() {
+	death.Register(func() {
 		_ = afw.Close()
 	})
 	return afw

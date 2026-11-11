@@ -75,6 +75,8 @@ func init() {
 	RegisterType[B]()
 	RegisterType[C]()
 	RegisterType[User]()
+
+	InfoFor[User]()
 }
 
 func TestUserFields(t *testing.T) {
@@ -84,8 +86,7 @@ func TestUserFields(t *testing.T) {
 		fmt.Println(f.Info.Name, f.GetValue(uptr), f.GetPtr(uptr))
 	}
 
-	stackobj := User{}
-	stackobj.UpdatedAt = 122
+	stackobj := User{UpdatedAt: 122}
 
 	fmt.Println(UpdatedAtField.GetValue(unsafe.Pointer(&stackobj)))
 
@@ -107,6 +108,7 @@ func TestUserFields(t *testing.T) {
 func TestGetValueWithAegis(t *testing.T) {
 	var obj User
 	obj.UpdatedAt = 121
+
 	fmt.Println(UpdatedAtField.GetValue(unsafe.Pointer(&obj)))
 
 	val, err := A1Field.GetValueWithAegis(
@@ -163,6 +165,24 @@ func TestPool(t *testing.T) {
 		fmt.Println(obj.C, obj.A1)
 		return nil
 	})
+}
+
+func BenchmarkDirectGetValue(b *testing.B) {
+	obj, _ := newobj()
+
+	b.ResetTimer()
+	for b.Loop() {
+		_ = obj.UpdatedAt
+	}
+}
+
+func BenchmarkDirectGetPtr(b *testing.B) {
+	obj, _ := newobj()
+
+	b.ResetTimer()
+	for b.Loop() {
+		_ = &obj.UpdatedAt
+	}
 }
 
 func BenchmarkStdReflectGetValue(b *testing.B) {
@@ -243,11 +263,11 @@ func TestExportRecursive(t *testing.T) {
 }
 
 func TestMemClr(t *testing.T) {
-	type MClr struct {
+	type AAA struct {
 		a int
 	}
 
-	a := MClr{
+	a := AAA{
 		a: 12,
 	}
 

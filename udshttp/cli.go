@@ -44,7 +44,8 @@ func NewClient(fp string, spwan func() (*exec.Cmd, error), logger *slog.Logger) 
 					if !_IsRunning(fp) {
 						return nil, ErrServerIsNotRunning
 					}
-					return net.DialTimeout("unix", fp, time.Second)
+					dialer := net.Dialer{Timeout: time.Second}
+					return dialer.DialContext(ctx, "unix", fp)
 				},
 			},
 		},
@@ -74,19 +75,12 @@ func WithCancel(ctx context.Context, cancelable ICancelable) context.Context {
 	return context.WithValue(ctx, _CtkKeyForCancelFunc, cancelable)
 }
 
-type _Ec struct {
-	count int
-}
-
 func incr_retry_times(ctx context.Context) (context.Context, int) {
-	iv := ctx.Value(_CtkKeyForSpwanRetryTimes)
-	if iv == nil {
-		ctx = context.WithValue(ctx, _CtkKeyForSpwanRetryTimes, &_Ec{count: 1})
-		return ctx, 1
+	count := 1
+	if iv, ok := ctx.Value(_CtkKeyForSpwanRetryTimes).(int); ok {
+		count = iv + 1
 	}
-	ecv := iv.(*_Ec)
-	ecv.count++
-	return ctx, ecv.count
+	return context.WithValue(ctx, _CtkKeyForSpwanRetryTimes, count), count
 }
 
 func spawn(cli *Client) error {
@@ -179,7 +173,9 @@ func Request[Input any, Output any](ctx context.Context, cli *Client, input Inpu
 		(llc.(ICancelable)).Set(func() {
 			cancel()
 			cube.Fly(func() {
-				if _, err := Request[_CancelAction, _CancelActionResult](ctx, cli, _CancelAction{ReqId: reqid}); err != nil {
+				cctx, ccancel := context.WithTimeout(context.Background(), time.Second*3)
+				defer ccancel()
+				if _, err := Request[_CancelAction, _CancelActionResult](cctx, cli, _CancelAction{ReqId: reqid}); err != nil {
 					cli.logger.Error("cancal call failed", slog.String("err", err.Error()))
 				}
 			})

@@ -9,10 +9,13 @@ import (
 	"slices"
 )
 
+var errorInterfaceType = reflect.TypeFor[error]()
+
 type _DiFnc struct {
-	deps []reflect.Type
-	fnc  reflect.Value
-	done bool
+	deps        []reflect.Type
+	fnc         reflect.Value
+	lastRvIsErr bool
+	done        bool
 }
 
 func (ele *_DiFnc) call(args []reflect.Value) (rvs []reflect.Value, ok bool) {
@@ -62,8 +65,7 @@ func (dic *Container[T]) appendone(v reflect.Value) {
 		if tvm == nil {
 			tvm = make(map[T]reflect.Value)
 		}
-		_, ok := tvm[maytoken.V]
-		if ok {
+		if _, ok := tvm[maytoken.V]; ok {
 			panic(fmt.Errorf("cube.dic: type `%v`, token `%v` is already registered", vtype, maytoken.V))
 		}
 		tvm[maytoken.V] = v
@@ -71,8 +73,7 @@ func (dic *Container[T]) appendone(v reflect.Value) {
 		return
 	}
 
-	_, ok := dic.valpool[vtype]
-	if ok {
+	if _, ok := dic.valpool[vtype]; ok {
 		panic(fmt.Errorf("cube.dic: `%s` is already registered", vtype))
 	}
 	dic.valpool[vtype] = v
@@ -104,8 +105,6 @@ func (e *errTokenNotFound) Error() string {
 
 var _ error = (*errTokenNotFound)(nil)
 
-// IsTokenNotFound
-// If you recoverd a panic, you should rethrow it if `IsTokenNotFound(paniced)`.
 func IsTokenNotFound(val any) bool {
 	e, ok := val.(error)
 	if !ok {
@@ -129,22 +128,24 @@ func (dic *Container[T]) getbytoken(token T, k reflect.Type) (reflect.Value, boo
 
 func (dic *Container[T]) mkfnc(fnc any) *_DiFnc {
 	rv := reflect.ValueOf(fnc)
-	if rv.IsNil() || rv.Kind() != reflect.Func {
+	if !rv.IsValid() || rv.Kind() != reflect.Func {
 		panic(fmt.Errorf("cube.dic: `%s` is not a function", fnc))
 	}
 
 	ele := &_DiFnc{fnc: rv}
-	for argtype := range rv.Type().Ins() {
-		ele.deps = append(ele.deps, argtype)
+	for in := range rv.Type().Ins() {
+		ele.deps = append(ele.deps, in)
+	}
+
+	outnum := rv.Type().NumOut()
+	if outnum > 1 {
+		ele.lastRvIsErr = rv.Type().Out(outnum - 1).Implements(errorInterfaceType)
 	}
 	return ele
 }
 
-var (
-	ErrContainerAlreadyExecuted = errors.New("cube.dic: container already executed")
-)
+var ErrContainerAlreadyExecuted = errors.New("cube.dic: container already executed")
 
-// TODO: Allow registering an interface that returns tokens to resolve all dependencies before execution. Remove errTokenNotFound.
 func (dic *Container[T]) Register(fnc any) *Container[T] {
 	if dic.execed {
 		panic(ErrContainerAlreadyExecuted)
@@ -154,13 +155,10 @@ func (dic *Container[T]) Register(fnc any) *Container[T] {
 }
 
 func (dic *Container[T]) OnReady(fnc any) *Container[T] {
-	ele := dic.mkfnc(fnc)
-	if dic.execAsync(ele) {
-		return dic
-	}
 	if dic.execed {
 		panic(ErrContainerAlreadyExecuted)
 	}
+	ele := dic.mkfnc(fnc)
 	dic.asyncfuncs = append(dic.asyncfuncs, ele)
 	return dic
 }
@@ -172,27 +170,24 @@ func (dic *Container[T]) Get[V any](dest *V, token ...T) bool {
 		if !ok {
 			return false
 		}
-		dv := reflect.ValueOf(dest)
-		dv.Elem().Set(val)
+		reflect.ValueOf(dest).Elem().Set(val)
 		return true
 	}
 	v, ok := dic.get(dt)
 	if !ok {
 		return false
 	}
-	dv := reflect.ValueOf(dest)
-	dv.Elem().Set(v)
+	reflect.ValueOf(dest).Elem().Set(v)
 	return true
 }
 
-func (dic *Container[T]) GetByToken(dest any, token T) *Container[T] {
-	dv := reflect.ValueOf(dest)
-	dt := dv.Type().Elem()
+func (dic *Container[T]) GetByToken[V any](dest *V, token T) *Container[T] {
+	dt := reflect.TypeOf(dest).Elem()
 	val, ok := dic.getbytoken(token, dt)
 	if !ok {
 		panic(&errTokenNotFound{token: token, rtype: dt})
 	}
-	dv.Elem().Set(val)
+	reflect.ValueOf(dest).Elem().Set(val)
 	return dic
 }
 
@@ -206,14 +201,13 @@ func (dic *Container[T]) execAsync(ele *_DiFnc) bool {
 		if !ok {
 			return false
 		}
-		if len(rvs) > 0 {
-			last := rvs[len(rvs)-1]
-			rev, ok := last.Interface().(error)
-			if ok {
+		if ele.lastRvIsErr {
+			lastrv := rvs[len(rvs)-1]
+			if lastv := lastrv.Interface(); lastv != nil {
 				panic(
 					fmt.Errorf(
-						"cube.dic: async function `%s`, return error: %s",
-						runtime.FuncForPC(ele.fnc.Pointer()).Name(), rev,
+						"cube.dic: async function `%s`, return error: %w",
+						runtime.FuncForPC(ele.fnc.Pointer()).Name(), lastv.(error),
 					),
 				)
 			}
@@ -269,11 +263,16 @@ func (dic *Container[T]) Run() {
 				if !ok {
 					continue
 				}
-				for _, rv := range rvs {
-					rev, ok := rv.Interface().(error)
-					if ok {
-						panic(fmt.Errorf("paniced: %s, %s", runtime.FuncForPC(ele.fnc.Pointer()).Name(), rev))
+
+				if ele.lastRvIsErr {
+					lastrv := rvs[len(rvs)-1]
+					if lastv := lastrv.Interface(); lastv != nil {
+						panic(fmt.Errorf("cube.dic: function `%s` returned error: %w", runtime.FuncForPC(ele.fnc.Pointer()).Name(), lastv.(error)))
 					}
+					rvs = rvs[0 : len(rvs)-1]
+				}
+
+				for _, rv := range rvs {
 					dic.append(rv)
 				}
 				ele.done = true

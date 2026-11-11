@@ -13,6 +13,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/suruiran/cube"
 	"github.com/suruiran/cube/rbc"
 )
 
@@ -23,6 +24,7 @@ type Stmt struct {
 	lognames        []string
 	fastargscache   atomic.Pointer[_FastArgsCache]
 	fastresultcache atomic.Pointer[_FastResultCache]
+	argspool        *cube.TypedPool[[]any]
 }
 
 type _FastArgsCache struct {
@@ -64,6 +66,14 @@ func (stmt *Stmt) prepare(ctx context.Context, rawsql string) error {
 	}
 	stmt.Stmt = stdstmt
 	stmt.rawsql = rawsql
+	stmt.argspool = cube.NewTypedPoolWithReset(
+		func() []any {
+			return make([]any, len(stmt.params))
+		},
+		func(val []any) {
+			clear(val)
+		},
+	)
 	return nil
 }
 
@@ -162,12 +172,10 @@ var (
 	nilargv = new(1)
 )
 
-func (s *Stmt) Args(vals ...any) ([]any, error) {
+func (s *Stmt) FillArgs(args []any, vals ...any) error {
 	if len(s.params) == 0 {
-		return nil, nil
+		return nil
 	}
-
-	args := make([]any, len(s.params))
 	for i := range len(s.params) {
 		args[i] = nilargv
 	}
@@ -176,16 +184,16 @@ func (s *Stmt) Args(vals ...any) ([]any, error) {
 	for _, ele := range vals {
 		vv := reflect.ValueOf(ele)
 		if err := s.args(vv, args, updatefast); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
 	for i := range len(s.params) {
 		if args[i] == nilargv {
-			return nil, fmt.Errorf("sqlx: param `%s` is not set", s.params[i])
+			return fmt.Errorf("sqlx: param `%s` is not set", s.params[i])
 		}
 	}
-	return args, nil
+	return nil
 }
 
 func (s *Stmt) log(ctx context.Context, msg string, err error, begin time.Time, argsv []any) {
@@ -220,7 +228,10 @@ func (s *Stmt) realstmt(ctx context.Context) *sql.Stmt {
 }
 
 func (s *Stmt) Rows(ctx context.Context, args ...any) (*sql.Rows, error) {
-	argsv, err := s.Args(args...)
+	argsv := s.argspool.Get()
+	defer s.argspool.Put(argsv)
+
+	err := s.FillArgs(argsv, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +253,10 @@ func (s *Stmt) MustRows(ctx context.Context, args ...any) *sql.Rows {
 }
 
 func (s *Stmt) Exec(ctx context.Context, args ...any) (sql.Result, error) {
-	argsv, err := s.Args(args...)
+	argsv := s.argspool.Get()
+	defer s.argspool.Put(argsv)
+
+	err := s.FillArgs(argsv, args...)
 	if err != nil {
 		return nil, err
 	}
