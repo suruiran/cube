@@ -143,6 +143,10 @@ func init() {
 	reqidseq.Store(10)
 }
 
+var (
+	RequestSetup func(ctx context.Context, req *http.Request)
+)
+
 func Request[Input any, Output any](ctx context.Context, cli *Client, input Input) (Output, error) {
 	var out Output
 	it := reflect.TypeFor[Input]()
@@ -204,6 +208,10 @@ func Request[Input any, Output any](ctx context.Context, cli *Client, input Inpu
 	req.Header.Set(HeaderReqId, fmt.Sprintf("%d", reqid))
 	if llc != nil {
 		req.Header.Set(HeaderIsCancelable, "true")
+	}
+
+	if RequestSetup != nil {
+		RequestSetup(ctx, req)
 	}
 
 	resp, err := cli.cli.Do(req)

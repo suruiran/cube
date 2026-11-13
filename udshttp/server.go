@@ -112,6 +112,7 @@ var (
 	cancelbyreqids sync.Map
 	UserAgent      = "cube.udshttp"
 	OnReq          func(ctx context.Context, r *http.Request) bool
+	HandleCtxSetup func(ctx context.Context, r *http.Request) context.Context
 )
 
 func Register[Input any, Output any](mux *http.ServeMux, logger *slog.Logger, fn func(ctx context.Context, input Input) (Output, error)) {
@@ -146,7 +147,7 @@ func Register[Input any, Output any](mux *http.ServeMux, logger *slog.Logger, fn
 			if is_cancelable {
 				Cancel(reqid)
 			}
-			logger.Error("udshttp server handle paniced", slog.String("path", r.URL.Path), slog.Any("err", rv))
+			logger.Error("udshttp server handle paniced", slog.String("path", r.URL.Path), logx.RecoveredWithStacktrace(rv, nil))
 			if sent {
 				return
 			}
@@ -220,6 +221,10 @@ func Register[Input any, Output any](mux *http.ServeMux, logger *slog.Logger, fn
 		} else {
 			ctx, cancel = context.WithCancel(r.Context())
 			defer cancel()
+		}
+
+		if HandleCtxSetup != nil {
+			ctx = HandleCtxSetup(ctx, r)
 		}
 
 		output, err := fn(ctx, input)
