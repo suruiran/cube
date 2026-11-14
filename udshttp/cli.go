@@ -143,8 +143,10 @@ func init() {
 	reqidseq.Store(10)
 }
 
+type RequestSetupFunc func(ctx context.Context, req *http.Request) (context.Context, *http.Request)
+
 var (
-	RequestSetup func(ctx context.Context, req *http.Request)
+	RequestSetups []RequestSetupFunc
 )
 
 func Request[Input any, Output any](ctx context.Context, cli *Client, input Input) (Output, error) {
@@ -210,8 +212,8 @@ func Request[Input any, Output any](ctx context.Context, cli *Client, input Inpu
 		req.Header.Set(HeaderIsCancelable, "true")
 	}
 
-	if RequestSetup != nil {
-		RequestSetup(ctx, req)
+	for _, fn := range RequestSetups {
+		ctx, req = fn(ctx, req)
 	}
 
 	resp, err := cli.cli.Do(req)

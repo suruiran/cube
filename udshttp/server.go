@@ -108,10 +108,12 @@ func (serv *Server) Run() error {
 	}))
 }
 
+type RequestFilterFunc func(r *http.Request) bool
+
 var (
 	cancelbyreqids sync.Map
 	UserAgent      = "cube.udshttp"
-	OnReq          func(ctx context.Context, r *http.Request) bool
+	RequestFilters []RequestFilterFunc
 	HandleCtxSetup func(ctx context.Context, r *http.Request) context.Context
 )
 
@@ -162,10 +164,12 @@ func Register[Input any, Output any](mux *http.ServeMux, logger *slog.Logger, fn
 			_, _ = w.Write([]byte(msg))
 		}()
 
-		if OnReq != nil && !OnReq(r.Context(), r) {
-			w.WriteHeader(http.StatusForbidden)
-			logger.Error("rejected by OnReq", slog.String("path", r.URL.Path))
-			return
+		for _, filter := range RequestFilters {
+			if !filter(r) {
+				w.WriteHeader(http.StatusForbidden)
+				logger.Error("rejected by OnReq", slog.String("path", r.URL.Path))
+				return
+			}
 		}
 
 		if r.Method != http.MethodPost {
