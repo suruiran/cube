@@ -3,6 +3,7 @@ package cube
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -133,4 +134,10 @@ func BenchmarkSeqSquare_HotKey(b *testing.B) {
 			handle.Unlock()
 		}
 	})
+}
+
+func TestAtomic(t *testing.T) {
+	a := atomic.Bool{}
+	fmt.Println(a.CompareAndSwap(false, true))
+	fmt.Println(a.CompareAndSwap(false, true))
 }

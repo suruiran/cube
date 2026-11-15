@@ -104,11 +104,6 @@ type RollingFile struct {
 	reopencount             int
 	ensureBackupsTaskCancel context.CancelFunc
 
-	compressTaskPool  *cube.TaskPool
-	useSlowCompress   bool
-	slowCompressLimit int64
-	slowCompressDir   string
-
 	dir        string
 	filepath   string
 	namePrefix string
@@ -179,14 +174,6 @@ func (r *RollingFile) rename(t time.Time) error {
 	if err := os.Rename(r.filepath, filename); err != nil {
 		return err
 	}
-	if r.compressTaskPool != nil {
-		r.compressTaskPool.AddFuncWithRetry(
-			func(ctx context.Context) {
-				docompress(ctx, r.slowCompressDir, filename, r.useSlowCompress, r.slowCompressLimit)
-			},
-			&cube.TaskPoolRetryOptions{Async: true},
-		)
-	}
 	return nil
 }
 
@@ -223,95 +210,6 @@ func (r *RollingFile) rollByTime(now time.Time) error {
 	return r.reopen()
 }
 
-type _SlowWriter struct {
-	ctx      context.Context
-	w        io.Writer
-	duration time.Duration
-	size     int64
-	wc       int64
-}
-
-func (s *_SlowWriter) Write(p []byte) (n int, err error) {
-	if err := s.ctx.Err(); err != nil {
-		return 0, err
-	}
-
-	n, err = s.w.Write(p)
-	if err != nil {
-		return n, err
-	}
-	s.wc += int64(n)
-	if s.wc >= s.size {
-		tick := time.NewTimer(s.duration)
-		defer tick.Stop()
-
-		select {
-		case <-tick.C:
-			{
-			}
-		case <-s.ctx.Done():
-			{
-				return 0, s.ctx.Err()
-			}
-		}
-		s.wc = 0
-	}
-	return n, nil
-}
-
-func NewSlowWriter(ctx context.Context, w io.Writer, sizeinbytes int64, duration time.Duration) io.Writer {
-	return &_SlowWriter{
-		ctx:      ctx,
-		w:        w,
-		duration: duration,
-		size:     sizeinbytes,
-	}
-}
-
-func docompress(ctx context.Context, temp, prevfn string, usesloww bool, limit int64) {
-	srcf, err := os.Open(prevfn)
-	if err != nil {
-		return
-	}
-	defer srcf.Close() // nolint:errcheck
-
-	targetfp := filepath.Join(temp, uuid.NewString())
-	tf, err := os.OpenFile(targetfp, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
-	if err != nil {
-		_ = srcf.Close()
-		return
-	}
-	defer func() {
-		_ = tf.Close()
-		_ = os.Remove(targetfp)
-	}()
-
-	bufw := bufio.NewWriter(tf)
-	cw := gzip.NewWriter(bufw)
-	defer cw.Close() // nolint:errcheck
-
-	var w io.Writer = cw
-	if usesloww {
-		w = NewSlowWriter(ctx, cw, limit, time.Second)
-	}
-	if _, err := io.Copy(w, srcf); err != nil {
-		return
-	}
-
-	_ = bufw.Flush()
-	_ = cw.Close()
-
-	if err := os.Rename(targetfp, fmt.Sprintf("%s.gz", prevfn)); err != nil {
-		fmt.Fprintf(
-			os.Stderr,
-			"cube.rolling: rename compress log failed, %s, temp %s",
-			err, targetfp,
-		)
-	} else {
-		_ = os.Remove(prevfn)
-	}
-}
-
 func (r *RollingFile) rollBySize() error {
 	if r.maxsize <= 0 {
 		return nil
@@ -336,10 +234,6 @@ func (r *RollingFile) Close() error {
 
 	if r.ensureBackupsTaskCancel != nil {
 		r.ensureBackupsTaskCancel()
-	}
-
-	if r.compressTaskPool != nil {
-		r.compressTaskPool.CloseDrain()
 	}
 
 	saveerr := r.save()
@@ -425,12 +319,6 @@ type SlowCompressOptions struct {
 	TempDir        string `json:"temp" toml:"temp"`
 }
 
-type CompressOptions struct {
-	Enable   bool                 `json:"enable" toml:"enable"`
-	Directly bool                 `json:"directly" toml:"directly"`
-	Slow     *SlowCompressOptions `json:"slow" toml:"slow"`
-}
-
 type IFile interface {
 	io.WriteCloser
 	Sync() error
@@ -440,12 +328,12 @@ type IFile interface {
 type OpenWriterFnc func(string, int, os.FileMode) (IFile, error)
 
 type RollingOptions struct {
-	Kind       RollingKind      `json:"kind" toml:"rolling_kind"`
-	FileSize   int64            `json:"size" toml:"size"`
-	Backups    int              `json:"backups" toml:"backups"`
-	Compress   *CompressOptions `json:"compress" toml:"compress"`
-	BufferSize int              `json:"buffer_size" toml:"buffer_size"`
-	OpenFile   OpenWriterFnc    `json:"-" toml:"-"`
+	Kind       RollingKind   `json:"kind" toml:"rolling_kind"`
+	FileSize   int64         `json:"size" toml:"size"`
+	Backups    int           `json:"backups" toml:"backups"`
+	Compress   bool          `json:"compress" toml:"compress"`
+	BufferSize int           `json:"buffer_size" toml:"buffer_size"`
+	OpenFile   OpenWriterFnc `json:"-" toml:"-"`
 }
 
 var (
@@ -467,7 +355,7 @@ func NewRollingFile(fp string, opts *RollingOptions) (*RollingFile, error) {
 		return nil, ErrInvalidRollingKind
 	}
 
-	if opts.Compress != nil && opts.Compress.Enable && opts.Compress.Directly {
+	if opts.Compress {
 		if !strings.HasSuffix(fp, ".gz") {
 			fp += ".gz"
 		}
@@ -537,43 +425,8 @@ func NewRollingFile(fp string, opts *RollingOptions) (*RollingFile, error) {
 		}
 	}
 
-	if opts.Compress != nil && opts.Compress.Enable {
-		if opts.Compress.Directly {
-			rf.gzipw = gzip.NewWriter(rf.buf)
-		} else {
-			slowopts := opts.Compress.Slow
-			if slowopts == nil {
-				slowopts = &SlowCompressOptions{}
-			}
-			if slowopts.Workers < 1 {
-				slowopts.Workers = 2
-			}
-			if slowopts.BytesPerSecond < 0 {
-				rf.useSlowCompress = false
-			} else {
-				rf.useSlowCompress = true
-				rf.slowCompressLimit = max(slowopts.BytesPerSecond, 1024*1024*16)
-			}
-			if slowopts.TempDir == "" {
-				slowopts.TempDir = filepath.Join(dir, ".temp")
-			}
-			err := os.MkdirAll(slowopts.TempDir, 0700)
-			if err != nil {
-				return nil, fmt.Errorf("cube.logx.rolling: create compress temp dir failed, %s, %w", slowopts.TempDir, err)
-			}
-			rf.slowCompressDir = slowopts.TempDir
-
-			rf.compressTaskPool = cube.NewTaskPool(&cube.TaskPoolOptions{
-				Workers: slowopts.Workers,
-				OnPanic: func(ctx context.Context, _ cube.ITaskItem, err any) {
-					fmt.Fprintf(
-						os.Stderr,
-						"cube.logx.rolling: compress task panic: %s, %v\n",
-						fp, err,
-					)
-				},
-			})
-		}
+	if opts.Compress {
+		rf.gzipw = gzip.NewWriter(rf.buf)
 	}
 
 	if rf.backups > 0 {

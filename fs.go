@@ -23,6 +23,9 @@ func ReadDirStream(dir string, opts *ReadDirStreamOptions) (iter.Seq2[os.DirEntr
 			BatchSize: 100,
 		}
 	}
+	if opts.BatchSize < 1 {
+		opts.BatchSize = 100
+	}
 
 	d, err := os.Lstat(dir)
 	if err != nil {
@@ -128,9 +131,9 @@ func FsScanStream(ctx context.Context, root string, opts *WalkOptions) (iter.Seq
 	if err != nil {
 		return nil, err
 	}
-	var markers = make(Set[string])
-	var ic = 0
 	return func(yield func(*FileInfoWithDir, error) bool) {
+		var markers = make(Set[string])
+		var ic = 0
 		doWalkStream(ctx, &ic, fullpath, markers, 0, yield, opts)
 	}, nil
 }
@@ -167,7 +170,7 @@ loop:
 			continue loop
 		}
 
-		*icptr++
+		(*icptr)++
 		if (*icptr)&0x3F == 0 {
 			if err = ctx.Err(); err != nil {
 				yield(nil, err)
