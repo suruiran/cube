@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-func NewTaskPool(workers int, queuesize int) (push func(task func()), wait func()) {
+func NewTaskGroup(workers int, queuesize int) (push func(task func()), wait func()) {
 	if workers < 1 {
 		workers = runtime.NumCPU()
 	}
