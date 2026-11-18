@@ -10,7 +10,7 @@ import (
 )
 
 func MarshalJSON(v any) ([]byte, error) {
-	return json.Marshal(v)
+	return json.Marshal(v, jsontext.AllowInvalidUTF8(true))
 }
 
 func UnmarshalJSON(input []byte, dest any) error {
@@ -26,7 +26,7 @@ func MarshalJSONIndent(v any) ([]byte, error) {
 	buf := jsonBufPool.Get()
 	defer jsonBufPool.Put(buf)
 
-	enc := jsontext.NewEncoder(buf, jsontext.WithIndent("  "))
+	enc := jsontext.NewEncoder(buf, jsontext.WithIndent("  "), jsontext.AllowInvalidUTF8(true))
 	err := json.MarshalEncode(enc, v)
 	if err != nil {
 		return nil, err
